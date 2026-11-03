@@ -1,5 +1,5 @@
 SIM ?= iPhone 17
-.PHONY: setup lint fmt typecheck unit test sim bench
+.PHONY: setup lint fmt typecheck unit test sim bench phase0
 
 setup:
 	uv sync
@@ -19,3 +19,6 @@ sim:
 	open -a Simulator
 bench:
 	@echo "bench/run_bench.py arrives in Phase 5"
+
+phase0:
+	uv run python scripts/phase0.py
