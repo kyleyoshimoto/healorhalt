@@ -1,0 +1,417 @@
+# HealOrHalt — iOS Self-Healing Test Framework: Project Plan
+
+Oct 30, 2026 · Kyle Yoshimoto
+
+## Status
+
+| Phase | State |
+|---|---|
+| 0. Environment and skeleton | Done (Nov 2, 2026) |
+| 1. Demo app and baseline tests | Next |
+| 2–9 | Not started |
+
+### Environment as of Phase 0
+
+Pinned here as the plan asks once Phase 0 passes. Python dependencies are pinned in `uv.lock`.
+
+| Tool | Version |
+|---|---|
+| macOS | 26.5 (Darwin 25.5.0) |
+| Xcode | 26.4.1 (17E202) |
+| iOS Simulator runtime | iOS 26.4 (23E244); an iOS 27.0 beta runtime is also installed |
+| Appium | 3.9.0 |
+| XCUITest driver | 12.22.7 |
+| Node | 26.13.0 |
+| Ollama | 0.40.13 |
+| Primary model | qwen3-vl:8b |
+| Python | 3.12.11 |
+
+Deviations from the original plan:
+
+- XCUITest driver is 12.x rather than the planned 10.x; it requires Appium 3, which is installed.
+- The Makefile uses tab-indented recipes, since macOS ships GNU make 3.81, which has no `.RECIPEPREFIX`.
+
+## Overview and decisions
+
+HealOrHalt is an open-source Python framework that repairs broken iOS UI test locators
+automatically, refuses to "heal" past real bugs, and publishes a benchmark that proves both. The
+MVP lands in week 6 and the full project in about 12 weeks, at roughly 10 hours a week.
+
+**Pitch:** "I built a self-healing iOS test framework that runs on a local LLM, cuts
+locator-maintenance failures, and holds a measured false-heal rate on an adversarial benchmark."
+
+**Why it stands out:** agents that tap through mobile apps already exist (mobile-mcp, Robot
+Framework Agent, BrowserStack's healer). Few measure the dangerous failure: a healer that clicks a
+look-alike element and turns a real regression green. HealOrHalt makes that number the headline.
+
+### Decisions locked in
+
+| Area | Decision | Why |
+|---|---|---|
+| Platform | iOS Simulator first; real iPhones and iPads as a stretch goal | You own iOS devices, and the simulator avoids signing and WebDriverAgent setup early on |
+| Dev machine | Apple Silicon Mac, 32 GB+ RAM | Fits Xcode, the simulator and an 8B vision model at once, with room to try a larger one |
+| LLM | Local only, through Ollama | Zero API cost, private, and a strong resume point (cost per heal = $0) |
+| Test driver | Python + pytest + Appium 3 XCUITest driver | Matches your Python and Mobly skills and the most common SDET job requirement |
+| Target apps | Your own SwiftUI demo app (weeks 1–6), then 1–2 real open-source apps | Fast start with known screens, then credibility from real code |
+| CI | Self-hosted GitHub Actions runner on your Mac | Real simulator and Ollama in CI; hosted runners only lint and run unit tests |
+| Reporting | Static HTML per run, JUnit XML + Allure, live FastAPI dashboard | What recruiters recognize, plus a visual demo |
+| Visibility | Public GitHub repo from day one | Commit history shows steady progress |
+
+**Ground rule:** build this only on your personal Mac and accounts, with open-source apps. Nothing
+from your current client work goes in, so there is no IP question.
+
+## Architecture
+
+A failing locator escalates through three tiers, cheapest first, and every proposal must pass the
+verdict engine before a test can continue. Normal runs never call the LLM; it runs only when the
+cache and heuristics both miss.
+
+A found element runs normally, and a missing one gets healing proposals that are verified, not
+trusted, before the run can go on.
+
+### Design rules
+
+- **Fingerprints, not just locators:** every green run records what each element looked like, so
+  healing compares against evidence, not guesses
+- **Verify by behavior:** a heal counts only if the action replays and the next screen matches.
+  Model confidence is one input, never the decision
+- **Fail loud, log everything:** every HEAL, ESCALATE and HALT is written to SQLite with
+  screenshots, so any verdict can be audited later
+
+## Evidence cards
+
+Every HEAL, ESCALATE and HALT produces an evidence card: an annotated screenshot showing what the
+framework found and where it acted, plus a plain-English description of the UI change or likely
+bug.
+
+| Part | What it shows | How it's made |
+|---|---|---|
+| Before screenshot | The screen from the last green run, with the original element boxed in dashed gray | Saved with the fingerprint |
+| After screenshot | The current screen, taken before the action, with the target boxed in the verdict color (green HEAL, amber ESCALATE, red HALT) | `driver.get_screenshot_as_png()` + the element's rect |
+| Action marker | Tap: a crosshair at the exact tap point. Type: the field boxed, with the typed text as a label. Swipe: an arrow from start to end | Pillow draws onto the PNG |
+| Result screenshot | The screen after the action, with the expected next screen named beside it | Taken right after the action |
+| Description | A sentence built from the fingerprint diff, e.g. "Button 'Sign in' (login.submit) is now 'Log in' (auth.login), moved 42 pt down" or "Expected the Item list screen after tapping 'Save'; an error alert appeared instead" | Deterministic template; an optional one-line LLM summary is labeled as model-written |
+| Evidence data | Scores, which tier proposed it, which checks passed or failed, latency | JSON beside the PNGs |
+
+**Where it shows up:** the HTML report (side-by-side before, after and result), Allure
+attachments, the JUnit failure message (the description plus the image path), the dashboard's
+review page, and the ESCALATE patch file.
+
+**One gotcha:** element rects are in points and screenshots are in pixels. Scale every rect by
+`screenshot_width / window_width` (3x on most iPhones) before drawing, and unit-test it on a saved
+screenshot.
+
+## Tech stack and environment
+
+Everything runs on your Mac: Xcode builds the app, Appium drives the simulator, and Ollama serves
+the vision model on localhost.
+
+| Layer | Choice | Notes |
+|---|---|---|
+| OS / IDE | macOS 15.6+ with Xcode 26 | iOS 26 simulators require Xcode 26 and macOS 15.6 or later |
+| Driver | Appium 3 + XCUITest driver | Run `appium driver doctor xcuitest` |
+| Language | Python 3.12, uv for env and deps | Appium-Python-Client, pytest, pydantic, rapidfuzz, Pillow, lxml |
+| Primary model | qwen3-vl:8b via Ollama | About 6.1 GB, 256K context; turn thinking off for speed |
+| Comparison models | qwen3-vl:4b (fast) and gemma3:27b (large) | Benchmark all three; 32 GB should fit the 27B model alongside the simulator, but measure it |
+| LLM output | Ollama structured outputs (JSON schema), temperature 0, fixed seed | Every response parses into a pydantic model or counts as "no proposal" |
+| Storage | SQLite | Fingerprints, heal cache, audit log, benchmark results |
+| Reports | Jinja2 HTML, JUnit XML, allure-pytest | One HTML report per run with screenshots |
+| Dashboard | FastAPI + HTMX + a charting library | Reads the SQLite results |
+| CI | GitHub Actions: hosted ubuntu-latest for lint and unit tests, self-hosted macOS runner for simulator runs | See the CI security risk below |
+
+### Repo layout
+
+```
+healorhalt/
+  apps/demo-ios/          # SwiftUI demo app (Xcode project)
+  src/healorhalt/
+    session.py            # Appium session + simctl helpers
+    locator.py            # L("login.submit") objects used by tests
+    fingerprint.py        # captures element fingerprints on green runs
+    heal/                 # tier0_cache.py, tier1_heuristic.py, tier2_llm.py
+    verdict.py            # HEAL / HALT / ESCALATE decision
+    evidence.py           # annotated screenshots + change/bug descriptions
+    llm/                  # ollama_client.py, prompts/, schemas.py
+    prune.py              # cuts the accessibility tree to a small subtree
+    store.py              # SQLite access
+    report/               # html.py, junit + allure hooks
+    plugin.py             # pytest plugin: fixtures, CLI flags
+  tests/
+    unit/                 # no simulator needed
+    demo/                 # UI suites for the demo app
+    real/                 # UI suites for real apps (Phase 6)
+  bench/
+    mutations/            # YAML mutation catalog + patch files
+    run_bench.py
+    results/
+  dashboard/
+  docs/                   # design notes, write-up
+  .github/workflows/
+```
+
+### Day-one setup checklist
+
+- [x] Install Xcode 26, open it once, and download an iOS 26 simulator runtime
+- [x] `brew install node uv ollama` and `npm i -g appium`
+- [x] `appium driver install xcuitest` and `appium driver doctor xcuitest` until it's green
+- [x] `ollama pull qwen3-vl:8b`, then send one test prompt with a screenshot
+- [ ] Create the public GitHub repo healorhalt with an MIT license, a README stub and branch
+      protection on main (repo and license done; branch protection not set)
+
+## Step-by-step plan
+
+Ten phases (0–9) over about 12 weeks, at about 10 hours a week. The MVP gate at the end of week 6
+is a benchmark run on the demo app with published numbers. Each phase ends with exit criteria.
+Don't start the next phase until they pass.
+
+### Phase 0: Environment and skeleton (week 1, ~5 hrs) — done
+
+- [x] Complete the day-one setup checklist above
+- [x] Scaffold the repo layout; add ruff, mypy and pytest config plus a Makefile (`make sim`,
+      `make test`, `make bench`)
+- [x] Write `session.py`: boot a named simulator with `xcrun simctl`, start an Appium session, take
+      a screenshot, read `page_source`, tear down
+- [x] Write `llm/ollama_client.py`: send a screenshot and a prompt, get back JSON validated against a
+      pydantic schema
+- [x] Add a hosted CI workflow that runs lint and unit tests on every push
+
+**Exit:** one command boots the simulator, opens Settings, saves a screenshot and the XML source,
+and gets a valid JSON reply from qwen3-vl:8b describing the screen. Met by `make phase0`.
+
+### Phase 1: Demo app and baseline tests (weeks 1–2, ~12 hrs)
+
+- [ ] Build a SwiftUI demo app called "Pantry" with 5 screens: login, item list, add item, item
+      detail and settings
+- [ ] Give every interactive element an `accessibilityIdentifier`
+- [ ] Add a mutation switch: the app reads a launch argument such as `-mutation M07` and changes its
+      UI to match. Each benchmark case then needs only a relaunch, not a rebuild
+- [ ] Write `locator.py`: tests use logical names, `L("login.submit")`, mapped to locators in a YAML
+      file
+- [ ] Write 15 pytest UI tests covering login, add/edit/delete item, search, settings toggles and
+      logout
+- [ ] Write `plugin.py` with app and screen fixtures, and flags such as
+      `--heal=off|cache|heuristic|llm|full`
+
+**Exit:** 15 of 15 tests pass three runs in a row with no mutation and `--heal=off`.
+
+### Phase 2: Fingerprints and the cheap healing tiers (week 3, ~10 hrs)
+
+- [ ] Write `fingerprint.py`: on each green run, save each element's ID, label, type, value, frame,
+      ancestor chain, sibling labels and a cropped screenshot to SQLite
+- [ ] Tier 0, cache: reuse a previously approved healed locator
+- [ ] Tier 1, heuristic: score every candidate in the current tree against the fingerprint
+      (weighted fuzzy match on label and ID, same type, similar position, similar parent and
+      siblings); return the top candidates with scores
+- [ ] Unit-test the scoring against saved XML fixtures, with no simulator
+- [ ] Add the first 10 demo-app mutations: ID renamed, label reworded, element moved, wrapped in a
+      new container
+
+**Exit:** with `--heal=heuristic`, at least 8 of the 10 benign mutations recover, and every heal is
+logged with its score.
+
+### Phase 3: Local LLM tier (week 4, ~10 hrs)
+
+- [ ] Write `prune.py`: cut the XCUITest XML down to the subtree around the expected location plus
+      interactive nodes, aiming for under 2K tokens
+- [ ] Tier 2, LLM: send the pruned tree, a screenshot with numbered boxes drawn over candidates
+      (set-of-marks), the fingerprint and the step's intent ("tap the button that submits login")
+- [ ] Require a JSON answer: `{candidate_id, confidence, element_still_exists: bool, rationale}`
+- [ ] Log latency and tokens per call, with a timeout and a fallback to "no proposal"
+- [ ] Write `tests/unit/test_llm_contract.py` with recorded responses, so CI doesn't need Ollama
+
+**Exit:** the LLM tier recovers cases the heuristics missed, with average latency under 10 s per
+heal on your Mac.
+
+### Phase 4: Verdict engine (week 5, ~10 hrs)
+
+- [ ] Write `verdict.py`. A proposal (from any tier) becomes HEAL only if all of these pass:
+  1. Exactly one element matches the new locator
+  2. The element type matches the fingerprint
+  3. The combined score clears the HEAL threshold
+  4. Replay check: the action runs and the step's assertion still passes
+  5. Next-screen check: the screen reached after the action matches the recorded fingerprint of
+     the next screen
+- [ ] HALT when no candidate clears the floor, the LLM says the element no longer exists, or the
+      replay or next-screen check fails. The test fails with a "likely real bug" message and
+      evidence attached
+- [ ] ESCALATE for anything in between. The test is marked healed-pending-review and the suggested
+      locator change is written to a patch file
+- [ ] Make thresholds configurable, and keep the LLM's confidence as only one input. It never
+      decides alone
+- [ ] Add 10 bug mutations to the demo app: button removed, a look-alike button that does something
+      else, wrong screen after tap, wrong total shown, field silently ignored
+- [ ] Write `evidence.py`: capture before, after and result screenshots; draw the target box, the
+      action marker (tap, type, swipe) and the old position; write the description from the
+      fingerprint diff; save PNGs and JSON per verdict
+- [ ] Unit-test the point-to-pixel scaling and drawing against saved screenshots, with no simulator
+- [ ] Show the evidence card in the terminal summary as a path, and attach it to the test result
+
+**Exit:** none of the 10 bug mutations ends in HEAL.
+
+### Phase 5: MVP benchmark and reports (week 6, ~10 hrs) — MVP gate
+
+- [ ] Expand the demo-app catalog to about 60 labeled cases (see Benchmark design)
+- [ ] Write `bench/run_bench.py`: run every case under every mode (off, heuristic, naive LLM, full
+      HealOrHalt) and every model, saving results to SQLite
+- [ ] Generate the static HTML report: one row per heal or halt, with before/after screenshots, the
+      evidence and the verdict
+- [ ] Turn on JUnit XML and Allure output
+- [ ] Write a README with a results table, a GIF of a heal and a halt, and a quick start
+
+**Exit (MVP):** the README shows a results table for all four modes, and you could show the repo to
+a recruiter as it stands.
+
+### Phase 6: Real open-source apps (weeks 7–8, ~20 hrs)
+
+- [ ] Clone and build Wikipedia iOS and NetNewsWire for the simulator with `xcodebuild`. If one
+      won't build in under a day, swap it for another open-source SwiftUI app
+- [ ] Write 8–10 UI tests per app on flows that need no login (search, open an article, add a feed,
+      settings)
+- [ ] Write mutations as git patch files under `bench/mutations/<app>/`, with a script that applies a
+      patch, rebuilds, runs and reverts
+- [ ] Add about 40 real-app cases to the benchmark
+
+**Exit:** the benchmark runs on all three apps, and the results table splits demo-app cases from
+real-app cases.
+
+### Phase 7: Self-hosted CI (week 9, ~8 hrs)
+
+- [ ] Register your Mac as a self-hosted runner labeled `macos-sim`, running as its own macOS user
+      account
+- [ ] Workflow `ui.yml`: on push to main and on manual dispatch only, boot the simulator, run the
+      demo suite with `--heal=full`, then upload the HTML, JUnit and Allure reports as artifacts
+- [ ] Workflow `bench.yml`: weekly or manual, runs the full benchmark and commits the new results to
+      `bench/results/`
+- [ ] Publish the latest HTML report to GitHub Pages
+
+**Exit:** a push to main produces a green UI run and a linked report, and fork PRs never reach the
+Mac.
+
+### Phase 8: Live dashboard (weeks 10–11, ~15 hrs)
+
+- [ ] A FastAPI app that reads SQLite: pass, heal, halt and escalate rates over time; false-heal
+      rate per model; latency and token use; a drill-down for each heal
+- [ ] A review page for ESCALATE cases: approve, which writes the locator into the Tier 0 cache, or
+      reject
+- [ ] Run it locally, and publish a static snapshot of it with the GitHub Pages report
+
+**Exit:** you can demo approving a pending heal in the dashboard and watching the next run use the
+cache.
+
+### Phase 9: Polish and launch (week 12, ~10 hrs)
+
+- [ ] Write a blog post: the problem of over-healing, the design, the results and what failed
+- [ ] Record a 2–3 minute demo video
+- [ ] Tag v1.0, publish to PyPI as `healorhalt`, and pin the repo on your GitHub profile
+- [ ] Update your resume, LinkedIn and job-hunting agent profile (see Resume deliverables)
+
+## Benchmark design
+
+About 100 labeled cases across three apps, each one either a benign UI change (should HEAL) or a
+real bug (should HALT). The headline number is the **false-heal rate**: how often a real bug gets
+healed into a passing test.
+
+### Mutation catalog
+
+| ID | Kind | Mutation | Expected verdict |
+|---|---|---|---|
+| B1 | Benign | accessibilityIdentifier renamed | HEAL |
+| B2 | Benign | Label reworded ("Sign in" to "Log in") | HEAL |
+| B3 | Benign | Element moved within the same screen | HEAL |
+| B4 | Benign | Wrapped in a new stack or container | HEAL |
+| B5 | Benign | Element type changed (button to tappable cell) | HEAL or ESCALATE |
+| B6 | Benign | Identifier removed, label kept | HEAL |
+| B7 | Benign | Screen reordered (list sorted differently) | HEAL |
+| R1 | Bug | Target element deleted | HALT |
+| R2 | Bug | Look-alike element with a different action | HALT |
+| R3 | Bug | Tap goes to the wrong screen | HALT |
+| R4 | Bug | Wrong value displayed (total, count) | HALT |
+| R5 | Bug | Input silently ignored | HALT |
+| R6 | Bug | Element present but disabled | HALT |
+| R7 | Bug | Two candidates equally likely (ambiguous) | ESCALATE or HALT |
+
+Each case is a YAML entry: `id`, `app`, `mutation` (a launch argument or patch file),
+`tests_affected` and `expected`. Labels are written before any run, so the benchmark can't be tuned
+after the fact.
+
+### Modes compared
+
+1. **No healing:** the baseline failure rate
+2. **Heuristic only:** Tiers 0–1
+3. **Naive LLM:** the LLM's pick is applied directly, with no verdict engine. This shows the danger
+4. **HealOrHalt full:** all tiers plus the verdict engine, run once per model (qwen3-vl:4b,
+   qwen3-vl:8b, gemma3:27b)
+
+### Metrics
+
+| Metric | Definition | Goal |
+|---|---|---|
+| Heal rate | Benign cases that end in HEAL | High |
+| False-heal rate | Bug cases that end in HEAL | As close to 0% as possible (headline) |
+| Bug catch rate | Bug cases that end in HALT | High |
+| Escalation rate | Cases sent for human review | Low, but never at the cost of false heals |
+| LLM-free share | Heals resolved by Tiers 0–1 | Show most heals skip the LLM |
+| Latency | Seconds added per healed step | Report median and p95 |
+| Stability | Same verdict on 3 repeated runs | Report the share of cases that agree |
+
+Run every case 3 times per mode, because simulators and local models both vary. Commit every result
+file, so anyone can rerun the benchmark and check the numbers.
+
+## Resume, demo and storytelling
+
+The project pays off only if a recruiter understands it in 30 seconds. So the README, a GIF and a
+results table do the selling, and the resume bullets carry the real numbers from your benchmark.
+
+### Resume bullets (fill in the numbers from your benchmark)
+
+- Built HealOrHalt, an open-source self-healing iOS test framework (Python, pytest, Appium 3,
+  XCUITest) that repairs UI locator drift on a local vision LLM, recovering X% of benign UI changes
+  at $0 API cost
+- Designed a verdict engine with replay and next-screen verification that held a Y% false-heal rate
+  on a 100-case adversarial benchmark, against Z% for naive LLM healing
+- Built a tiered healing pipeline (cache, heuristics, then LLM) in which N% of repairs needed no
+  model call, adding a median S seconds per healed step
+- Ran UI suites in CI on a self-hosted macOS runner, with JUnit, Allure and HTML reporting and a
+  FastAPI dashboard for reviewing heals
+
+### Showcase checklist
+
+- [ ] README above the fold: one-sentence pitch, the results table, a GIF of one HEAL and one HALT
+- [ ] Architecture diagram in the README
+- [ ] A 2–3 minute demo video: break a locator, watch it heal; plant a bug, watch it halt
+- [ ] Blog post on over-healing, cross-posted to LinkedIn and dev.to
+- [ ] A short talk version for a local QA or Appium meetup (optional, strong signal)
+
+### Interview story (STAR outline)
+
+- **Situation:** UI test suites break on every UI tweak, and self-healing tools can hide real bugs
+- **Task:** heal drift safely, without an API budget
+- **Action:** fingerprints, tiered healing, a local VLM and replay-based verification, measured
+  against a labeled benchmark
+- **Result:** your heal rate, false-heal rate and LLM-free share, plus what failed and what you
+  changed
+
+## Risks and stretch goals
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Self-hosted runner on a public repo | A fork PR could run code on your Mac | Trigger UI workflows only on push to main and manual dispatch, never `pull_request`; require approval for outside contributors; run the runner under a separate macOS user |
+| Local model too slow | Heals add minutes per run | Prune the tree hard, turn thinking off, keep the model loaded, cache aggressively, fall back to qwen3-vl:4b |
+| Local model too weak | Few LLM heals succeed | The verdict engine still protects you; report it honestly, since "heuristics carry most of it" is a real finding |
+| Real apps won't build or need login | Phase 6 slips | Time-box each app to one day; swap in another open-source SwiftUI app |
+| Xcode or driver updates break WebDriverAgent | Lost evenings | Pin versions, upgrade on purpose, rerun `appium driver doctor xcuitest` |
+| Simulator flakiness muddies results | Noisy benchmark | 3 runs per case, fresh simulator per suite, report stability as a metric |
+| Scope creep toward a "full AI tester" | MVP slips | Protect the verdict engine and the benchmark; everything else waits |
+| IP overlap with client work | Employment risk | Personal Mac and accounts only, no client code, tools or devices |
+
+### Stretch goals (after v1.0)
+
+- **Real devices:** run on your iPhones and iPads, which needs WebDriverAgent signing with a free or
+  paid Apple developer account
+- **Natural-language authoring:** describe a flow in English, and the agent explores it and writes a
+  normal pytest file
+- **MCP server:** expose `heal`, `run_suite` and `explain_failure` so Claude Code or other agents can
+  call HealOrHalt
+- **Android:** add the UiAutomator2 driver and reuse the same pipeline
+- **Companion-device flows:** test a phone app together with a Bluetooth accessory you own, a nod to
+  your hardware-in-the-loop background
