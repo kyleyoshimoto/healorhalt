@@ -1,0 +1,42 @@
+# Logical locator names used by the demo-app tests. A bare string is an accessibility id;
+# otherwise give one {strategy: value} with strategy id, predicate, class_chain or xpath.
+# {placeholders} are filled from L(name, key=value).
+
+# One element per screen that proves the screen is showing (App.wait_for_screen).
+screen.login: login.title
+screen.list: list.count
+screen.add: add.name
+screen.detail: detail.delete
+screen.settings: settings.logout
+
+login.username: login.username
+login.password: login.password
+login.submit: login.submit
+login.error: login.error
+
+list.search: list.search
+list.count: list.count
+list.empty: list.empty
+list.add: list.add
+list.settings: list.settings
+list.row: item.row.{name}
+list.rows: {predicate: "name BEGINSWITH 'item.row.'"}
+
+add.name: add.name
+add.quantity: add.quantity
+add.save: add.save
+add.cancel: add.cancel
+
+detail.name: detail.name
+detail.quantity: detail.quantity
+detail.edit: detail.edit
+detail.save: detail.save
+detail.nameField: detail.nameField
+detail.quantityField: detail.quantityField
+detail.delete: detail.delete
+detail.confirmDelete: detail.confirmDelete
+
+settings.showQuantities: settings.showQuantities
+settings.sortAlphabetically: settings.sortAlphabetically
+settings.logout: settings.logout
+settings.mutation: settings.mutation

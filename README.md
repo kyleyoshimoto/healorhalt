@@ -2,7 +2,7 @@
 
 Self-healing iOS UI tests that repair broken locators automatically, and refuse to heal past real bugs.
 
-**Status:** early development (Phase 0: environment and skeleton).
+**Status:** early development. Phase 1 (demo app and baseline tests) is done; see [docs/plan.md](docs/plan.md).
 
 ## Why
 

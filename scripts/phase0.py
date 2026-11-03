@@ -5,15 +5,17 @@ from pathlib import Path
 
 from healorhalt.llm.ollama_client import ask_structured
 from healorhalt.llm.schemas import ScreenDescription
-from healorhalt.session import boot_simulator, capture, ios_session
+from healorhalt.session import boot_simulator, capture, ios_session, resolve_udid
 
 SIM = os.environ.get("SIM", "iPhone 17")
+SIM_OS = os.environ.get("SIM_OS", "26.4")
 OUT = Path("artifacts/phase0")
 
 
 def main() -> None:
-    boot_simulator(SIM)
-    with ios_session(SIM, "com.apple.Preferences") as driver:
+    udid = resolve_udid(SIM, SIM_OS)
+    boot_simulator(udid)
+    with ios_session(udid, "com.apple.Preferences") as driver:
         png, xml = capture(driver, OUT, "settings")
     print(f"saved {png} and {xml}")
 

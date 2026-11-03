@@ -221,3 +221,6 @@ __marimo__/
 
 .DS_Store
 artifacts/
+
+apps/demo-ios/build/
+apps/demo-ios/Pantry.xcodeproj/
