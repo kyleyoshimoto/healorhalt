@@ -7,13 +7,17 @@ struct SettingsView: View {
         @Bindable var store = store
         Form {
             Section("Display") {
-                Toggle("Show quantities", isOn: $store.showQuantities)
-                    .accessibilityIdentifier("settings.showQuantities")
+                Toggle(
+                    Mutation.pick("M09", "Display quantities", else: "Show quantities"),
+                    isOn: $store.showQuantities
+                )
+                .accessibilityIdentifier(
+                    Mutation.pick("M09", "settings.quantities", else: "settings.showQuantities"))
                 Toggle("Sort alphabetically", isOn: $store.sortAlphabetically)
                     .accessibilityIdentifier("settings.sortAlphabetically")
             }
             Section {
-                Button("Log Out", role: .destructive) {
+                Button(Mutation.pick("M06", "Sign Out", else: "Log Out"), role: .destructive) {
                     store.logOut()
                 }
                 .accessibilityIdentifier("settings.logout")

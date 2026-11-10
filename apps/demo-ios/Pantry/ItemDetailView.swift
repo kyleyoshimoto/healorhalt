@@ -9,6 +9,13 @@ struct ItemDetailView: View {
     @State private var draftQuantity = ""
     @State private var isConfirmingDelete = false
 
+    private var deleteButton: some View {
+        Button("Delete Item", role: .destructive) {
+            isConfirmingDelete = true
+        }
+        .accessibilityIdentifier("detail.delete")
+    }
+
     var body: some View {
         if let item = store.item(id) {
             Form {
@@ -31,10 +38,14 @@ struct ItemDetailView: View {
                     }
                 }
                 Section {
-                    Button("Delete Item", role: .destructive) {
-                        isConfirmingDelete = true
+                    if Mutation.isActive("M04") {
+                        // M04 (B4): the Delete button is wrapped in a new container.
+                        VStack { deleteButton }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("detail.dangerZone")
+                    } else {
+                        deleteButton
                     }
-                    .accessibilityIdentifier("detail.delete")
                 }
             }
             .navigationTitle(item.name)
@@ -56,7 +67,7 @@ struct ItemDetailView: View {
                         draftQuantity = "\(item.quantity)"
                         isEditing = true
                     }
-                    .accessibilityIdentifier("detail.edit")
+                    .accessibilityIdentifier(Mutation.pick("M05", "detail.modify", else: "detail.edit"))
                 }
             }
             .alert("Delete \(item.name)?", isPresented: $isConfirmingDelete) {

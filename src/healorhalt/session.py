@@ -7,6 +7,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from appium import webdriver
 from appium.options.ios import XCUITestOptions
@@ -16,6 +17,10 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
 from healorhalt.locator import L, Locator
+
+if TYPE_CHECKING:
+    from healorhalt.fingerprint import Recorder
+    from healorhalt.heal import Healer
 
 APPIUM_URL = "http://127.0.0.1:4723"
 _UDID = re.compile(r"^[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}$", re.IGNORECASE)
@@ -56,13 +61,14 @@ def ios_session(
 ) -> Iterator[webdriver.Remote]:
     """Start an XCUITest session on a booted simulator and quit it on exit.
 
-    With `app`, that build is installed first.
+    With `app`, that build is installed first. simctl does the install because with no_reset
+    Appium keeps whatever build is already on the simulator.
     """
+    if app is not None:
+        subprocess.run(["xcrun", "simctl", "install", udid, str(app)], check=True)
     options = XCUITestOptions()
     options.udid = udid
     options.bundle_id = bundle_id
-    if app is not None:
-        options.app = str(app)
     options.no_reset = True
     options.new_command_timeout = 120
     driver = webdriver.Remote(url, options=options)
@@ -85,13 +91,23 @@ def capture(driver: webdriver.Remote, out_dir: Path, name: str) -> tuple[Path, P
 class App:
     """The app under test, driven through logical locators.
 
-    Every element lookup goes through `find`, which is where healing will hook in.
+    Every element lookup goes through `find`. With a recorder, each element found is
+    fingerprinted; with a healer, a locator that finds nothing is handed to the healing tiers.
     """
 
-    def __init__(self, driver: webdriver.Remote, bundle_id: str, timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        driver: webdriver.Remote,
+        bundle_id: str,
+        timeout: float = 5.0,
+        healer: "Healer | None" = None,
+        recorder: "Recorder | None" = None,
+    ) -> None:
         self.driver = driver
         self.bundle_id = bundle_id
         self.timeout = timeout
+        self.healer = healer
+        self.recorder = recorder
 
     def launch(self, mutation: str | None = None) -> None:
         """Relaunch from a clean state, with `-mutation <ID>` if given."""
@@ -101,22 +117,42 @@ class App:
             "mobile: launchApp", {"bundleId": self.bundle_id, "arguments": arguments}
         )
 
-    def find(self, locator: Locator, timeout: float | None = None) -> WebElement:
-        wait = WebDriverWait(
-            self.driver, self.timeout if timeout is None else timeout, poll_frequency=0.25
-        )
+    def _wait_find(self, locator: Locator, timeout: float) -> WebElement:
+        wait = WebDriverWait(self.driver, timeout, poll_frequency=0.25)
         try:
             element: WebElement = wait.until(lambda d: d.find_element(locator.by, locator.value))
         except TimeoutException as e:
             raise NoSuchElementException(f"{locator} not found") from e
         return element
 
+    def _try_find(self, locator: Locator) -> WebElement | None:
+        try:
+            return self._wait_find(locator, 1.0)
+        except NoSuchElementException:
+            return None
+
+    def find(self, locator: Locator, timeout: float | None = None, heal: bool = True) -> WebElement:
+        """Find an element, healing the locator if it finds nothing and a healer is set."""
+        try:
+            element = self._wait_find(locator, self.timeout if timeout is None else timeout)
+        except NoSuchElementException:
+            if not heal or self.healer is None:
+                raise
+            healed = self.healer.heal(locator, self.driver.page_source, self._try_find)
+            if healed is None:
+                raise
+            return healed
+        if self.recorder is not None:
+            self.recorder.record(locator, element)
+        return element
+
     def find_all(self, locator: Locator) -> list[WebElement]:
         return list(self.driver.find_elements(locator.by, locator.value))
 
     def exists(self, locator: Locator, timeout: float = 0) -> bool:
+        """Whether the locator matches, without healing: absence is the answer, not a fault."""
         try:
-            self.find(locator, timeout)
+            self.find(locator, timeout, heal=False)
         except NoSuchElementException:
             return False
         return True
@@ -128,7 +164,21 @@ class App:
         )
 
     def tap(self, locator: Locator) -> None:
-        self.find(locator).click()
+        """Tap an element.
+
+        XCUITest silently ignores a click on an element it reports as not hittable, such as a
+        button wrapped in a narrower container, even when a person could tap it; tap its frame's
+        centre instead.
+        """
+        element = self.find(locator)
+        if element.get_attribute("hittable") == "false":
+            rect = element.rect
+            self.driver.execute_script(
+                "mobile: tap",
+                {"x": rect["x"] + rect["width"] / 2, "y": rect["y"] + rect["height"] / 2},
+            )
+        else:
+            element.click()
 
     def toggle(self, locator: Locator) -> None:
         """Flip a switch and wait for its value to change.

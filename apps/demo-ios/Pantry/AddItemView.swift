@@ -27,7 +27,7 @@ struct AddItemView: View {
                         .accessibilityIdentifier("add.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(Mutation.pick("M02", "Add", else: "Save")) {
                         store.add(name: trimmedName, quantity: Int(quantity) ?? 1)
                         dismiss()
                     }

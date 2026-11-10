@@ -1,30 +1,38 @@
 # Logical locator names used by the demo-app tests. A bare string is an accessibility id;
 # otherwise give one {strategy: value} with strategy id, predicate, class_chain or xpath.
 # {placeholders} are filled from L(name, key=value).
+#
+# Most locators are accessibility ids, but real suites also use labels, structure and position,
+# and those are what UI changes break first. A few entries below are written that way on purpose,
+# so the Phase 2 mutations (bench/mutations/demo.yaml) each break a real lookup.
 
 # One element per screen that proves the screen is showing (App.wait_for_screen).
 screen.login: login.title
 screen.list: list.count
 screen.add: add.name
-screen.detail: detail.delete
+screen.detail: detail.name
 screen.settings: settings.logout
 
-login.username: login.username
-login.password: login.password
+# Structural: the fields that follow the title (broken by M08, which wraps them in a container).
+login.username: {xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeTextField'}
+login.password: {xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeSecureTextField'}
 login.submit: login.submit
 login.error: login.error
 
-list.search: list.search
+# Structural: the text field just above the item count (broken by M07, which moves it below).
+list.search: {xpath: '//XCUIElementTypeStaticText[@name="list.count"]/preceding-sibling::XCUIElementTypeTextField'}
 list.count: list.count
 list.empty: list.empty
-list.add: list.add
+# Positional: the nav-bar button on the trailing side (broken by M03, which moves it leading).
+list.add: {xpath: '//XCUIElementTypeNavigationBar//XCUIElementTypeButton[@x > 200]'}
 list.settings: list.settings
 list.row: item.row.{name}
 list.rows: {predicate: "name BEGINSWITH 'item.row.'"}
 
 add.name: add.name
 add.quantity: add.quantity
-add.save: add.save
+# By label (broken by M02, which rewords "Save" to "Add").
+add.save: {predicate: "type == 'XCUIElementTypeButton' AND label == 'Save'"}
 add.cancel: add.cancel
 
 detail.name: detail.name
@@ -33,10 +41,12 @@ detail.edit: detail.edit
 detail.save: detail.save
 detail.nameField: detail.nameField
 detail.quantityField: detail.quantityField
-detail.delete: detail.delete
+# Structural: the button three levels inside a list cell (broken by M04, which wraps it).
+detail.delete: {xpath: '//XCUIElementTypeCell/*/*/*/XCUIElementTypeButton[@label="Delete Item"]'}
 detail.confirmDelete: detail.confirmDelete
 
 settings.showQuantities: settings.showQuantities
 settings.sortAlphabetically: settings.sortAlphabetically
-settings.logout: settings.logout
+# By label (broken by M06, which rewords "Log Out" to "Sign Out").
+settings.logout: {predicate: "type == 'XCUIElementTypeButton' AND label == 'Log Out'"}
 settings.mutation: settings.mutation

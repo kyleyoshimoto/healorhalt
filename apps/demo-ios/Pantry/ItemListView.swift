@@ -14,16 +14,13 @@ struct ItemListView: View {
         NavigationStack {
             let items = store.visibleItems(matching: search)
             VStack(spacing: 8) {
-                TextField("Search items", text: $search)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-                    .accessibilityIdentifier("list.search")
+                // M07 (B3): the search field moves below the item count.
+                if !Mutation.isActive("M07") { searchField }
                 Text(store.items.count == 1 ? "1 item" : "\(store.items.count) items")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("list.count")
+                if Mutation.isActive("M07") { searchField }
                 if items.isEmpty {
                     Spacer()
                     Text("No matching items")
@@ -53,9 +50,11 @@ struct ItemListView: View {
                         Image(systemName: "gearshape")
                     }
                     .accessibilityLabel("Settings")
-                    .accessibilityIdentifier("list.settings")
+                    .accessibilityIdentifier(
+                        Mutation.pick("M10", "list.preferences", else: "list.settings"))
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                // M03 (B3): the Add button moves to the leading side, next to Settings.
+                ToolbarItem(placement: Mutation.pick("M03", .topBarLeading, else: .topBarTrailing)) {
                     Button {
                         isAdding = true
                     } label: {
@@ -77,5 +76,14 @@ struct ItemListView: View {
                 AddItemView()
             }
         }
+    }
+
+    private var searchField: some View {
+        TextField("Search items", text: $search)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textFieldStyle(.roundedBorder)
+            .padding(.horizontal)
+            .accessibilityIdentifier("list.search")
     }
 }

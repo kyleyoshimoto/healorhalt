@@ -1,7 +1,7 @@
 SIM ?= iPhone 17
 SIM_OS ?= 26.4
 export SIM SIM_OS
-.PHONY: setup lint fmt typecheck unit test sim bench phase0 app demo phase1
+.PHONY: setup lint fmt typecheck unit test sim bench phase0 app demo phase1 record phase2
 
 setup:
 	uv sync
@@ -37,3 +37,9 @@ demo:
 # Phase 1 exit check: the demo suite passes three runs in a row.
 phase1:
 	for run in 1 2 3; do echo "== run $$run"; uv run pytest tests/demo --heal=off -q || exit 1; done
+# Save fingerprints of every element the demo suite finds; healing scores against these.
+record:
+	uv run pytest tests/demo --heal=off --record -q
+# Phase 2 exit check: at least 8 of the 10 benign mutations recover with --heal=heuristic.
+phase2:
+	uv run python scripts/phase2.py

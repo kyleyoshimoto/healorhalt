@@ -1,0 +1,96 @@
+# Labeled mutation cases for the Pantry demo app. Each case is applied by relaunching the app with
+# `-mutation <id>`; see apps/demo-ios/Pantry/Mutation.swift.
+#
+# Labels (kind, expected) are written before any healing run, so the benchmark can't be tuned to
+# the results. A case counts only if its affected tests fail with --heal=off.
+#
+# kind: the plan's catalog code (B = benign, should HEAL; R = real bug, should HALT).
+
+cases:
+  - id: M01
+    app: pantry
+    kind: B1
+    description: Sign-in button's accessibilityIdentifier renamed login.submit -> login.signIn
+    tests_affected:
+      - tests/demo/test_login.py::test_valid_login_shows_items
+      - tests/demo/test_items.py::test_seeded_items_are_listed
+    expected: HEAL
+
+  - id: M02
+    app: pantry
+    kind: B2
+    description: Add sheet's Save button reworded "Save" -> "Add"
+    tests_affected:
+      - tests/demo/test_items.py::test_add_item
+    expected: HEAL
+
+  - id: M03
+    app: pantry
+    kind: B3
+    description: Add (+) button moved from the trailing to the leading side of the nav bar
+    tests_affected:
+      - tests/demo/test_items.py::test_add_item
+      - tests/demo/test_items.py::test_cancel_add_item
+    expected: HEAL
+
+  - id: M04
+    app: pantry
+    kind: B4
+    description: Detail screen's Delete Item button wrapped in a new accessibility container
+    tests_affected:
+      - tests/demo/test_items.py::test_delete_item
+    expected: HEAL
+
+  - id: M05
+    app: pantry
+    kind: B1
+    description: Detail screen's Edit button identifier renamed detail.edit -> detail.modify
+    tests_affected:
+      - tests/demo/test_items.py::test_edit_item_quantity
+    expected: HEAL
+
+  - id: M06
+    app: pantry
+    kind: B2
+    description: Settings' Log Out button reworded "Log Out" -> "Sign Out"
+    tests_affected:
+      - tests/demo/test_settings.py::test_log_out
+    expected: HEAL
+
+  - id: M07
+    app: pantry
+    kind: B3
+    description: Search field moved from above the item count to below it
+    tests_affected:
+      - tests/demo/test_search.py::test_search_filters_items
+      - tests/demo/test_search.py::test_search_without_matches_shows_empty_state
+    expected: HEAL
+
+  - id: M08
+    app: pantry
+    kind: B4
+    description: Username and password fields wrapped in a new accessibility container
+    tests_affected:
+      - tests/demo/test_login.py::test_valid_login_shows_items
+      - tests/demo/test_login.py::test_wrong_password_shows_error
+    expected: HEAL
+
+  - id: M09
+    app: pantry
+    kind: B1+B2
+    description: >-
+      Show quantities toggle renamed settings.showQuantities -> settings.quantities and reworded
+      "Show quantities" -> "Display quantities"
+    tests_affected:
+      - tests/demo/test_settings.py::test_hide_quantities
+      - tests/demo/test_settings.py::test_settings_kept_after_leaving
+    expected: HEAL
+
+  - id: M10
+    app: pantry
+    kind: B1
+    description: Settings (gear) button identifier renamed list.settings -> list.preferences
+    tests_affected:
+      - tests/demo/test_settings.py::test_log_out
+      - tests/demo/test_settings.py::test_sort_alphabetically
+    expected: HEAL
