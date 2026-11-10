@@ -224,3 +224,4 @@ artifacts/
 
 apps/demo-ios/build/
 apps/demo-ios/Pantry.xcodeproj/
+.healorhalt/

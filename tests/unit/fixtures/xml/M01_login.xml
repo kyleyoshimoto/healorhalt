@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AppiumAUT>
+  <XCUIElementTypeApplication type="XCUIElementTypeApplication" name="Pantry" label="Pantry" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="" processId="15189" bundleId="com.healorhalt.pantry">
+    <XCUIElementTypeWindow type="XCUIElementTypeWindow" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="">
+      <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="">
+        <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="">
+          <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="">
+            <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="0" width="402" height="874" index="0" traits="">
+              <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Pantry" name="login.title" label="Pantry" enabled="true" visible="true" accessible="true" x="149" y="355" width="104" height="42" index="0" traits="StaticText"/>
+              <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="Username" name="login.username" label="" enabled="true" visible="true" accessible="true" x="32" y="412" width="338" height="35" index="1" placeholderValue="Username" traits=""/>
+              <XCUIElementTypeSecureTextField type="XCUIElementTypeSecureTextField" value="Password" name="login.password" label="" enabled="true" visible="true" accessible="true" x="32" y="462" width="338" height="35" index="2" placeholderValue="Password" traits=""/>
+              <XCUIElementTypeButton type="XCUIElementTypeButton" name="login.signIn" label="Sign in" enabled="false" visible="true" accessible="true" x="163" y="512" width="76" height="35" index="3" traits="NotEnabled, Button"/>
+            </XCUIElementTypeOther>
+          </XCUIElementTypeOther>
+        </XCUIElementTypeOther>
+      </XCUIElementTypeOther>
+    </XCUIElementTypeWindow>
+  </XCUIElementTypeApplication>
+</AppiumAUT>

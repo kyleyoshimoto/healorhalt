@@ -8,8 +8,9 @@ Oct 30, 2026 · Kyle Yoshimoto
 |---|---|
 | 0. Environment and skeleton | Done (Nov 2, 2026) |
 | 1. Demo app and baseline tests | Done (Nov 3, 2026) |
-| 2. Fingerprints and the cheap healing tiers | Next |
-| 3–9 | Not started |
+| 2. Fingerprints and the cheap healing tiers | Done (Nov 10, 2026) |
+| 3. Local LLM tier | Next |
+| 4–9 | Not started |
 
 ### Environment as of Phase 0
 
@@ -209,20 +210,54 @@ Notes from building it:
   after each sign-in.
 - Failed UI tests save a screenshot and the page source to `artifacts/failures/`.
 
-### Phase 2: Fingerprints and the cheap healing tiers (week 3, ~10 hrs)
+### Phase 2: Fingerprints and the cheap healing tiers (week 3, ~10 hrs) — done
 
-- [ ] Write `fingerprint.py`: on each green run, save each element's ID, label, type, value, frame,
+- [x] Write `fingerprint.py`: on each green run, save each element's ID, label, type, value, frame,
       ancestor chain, sibling labels and a cropped screenshot to SQLite
-- [ ] Tier 0, cache: reuse a previously approved healed locator
-- [ ] Tier 1, heuristic: score every candidate in the current tree against the fingerprint
+- [x] Tier 0, cache: reuse a previously approved healed locator
+- [x] Tier 1, heuristic: score every candidate in the current tree against the fingerprint
       (weighted fuzzy match on label and ID, same type, similar position, similar parent and
       siblings); return the top candidates with scores
-- [ ] Unit-test the scoring against saved XML fixtures, with no simulator
-- [ ] Add the first 10 demo-app mutations: ID renamed, label reworded, element moved, wrapped in a
+- [x] Unit-test the scoring against saved XML fixtures, with no simulator
+- [x] Add the first 10 demo-app mutations: ID renamed, label reworded, element moved, wrapped in a
       new container
 
 **Exit:** with `--heal=heuristic`, at least 8 of the 10 benign mutations recover, and every heal is
-logged with its score.
+logged with its score. Met by `make phase2`: 10 of 10 recovered, each mutation first confirmed to
+break its tests with `--heal=off`.
+
+| Case | Kind | Change | Heal score |
+|---|---|---|---|
+| M01 | B1 | Sign-in ID renamed | 0.92 |
+| M02 | B2 | Add sheet's "Save" reworded to "Add" | 0.78 |
+| M03 | B3 | Add button moved to the leading side | 0.87 |
+| M04 | B4 | Delete button wrapped in a container | 0.82 |
+| M05 | B1 | Edit button ID renamed | 0.74 |
+| M06 | B2 | "Log Out" reworded to "Sign Out" | 0.90 |
+| M07 | B3 | Search field moved below the count | 0.99 |
+| M08 | B4 | Login fields wrapped in a container | 0.98 |
+| M09 | B1+B2 | Quantities toggle renamed and reworded | 0.89 |
+| M10 | B1 | Settings button ID renamed | 0.69 |
+
+Threshold 0.6. The catalog is `bench/mutations/demo.yaml`; per-heal details land in
+`artifacts/phase2/results.json`.
+
+Notes from building it:
+
+- Accessibility-ID locators survive moves, wraps and rewording, so those mutations broke nothing at
+  first. Seven demo locators now use a label, structure or position, the way real suites mix them,
+  so every case breaks a real lookup.
+- Recording is opt-in (`--record`, `make record`) rather than on every green run, since each
+  recorded lookup costs a page-source read and a screenshot.
+- XCUITest reports a button wrapped in a narrower container as `visible="false"` and not hittable,
+  though a person can tap it. Tier 1 keeps hidden elements as candidates with a 0.85 penalty, and
+  `App.tap()` taps the frame centre of non-hittable elements, because a plain click on them silently
+  does nothing.
+- With `no_reset`, Appium kept whatever build was already installed, so sessions now install the
+  app with `xcrun simctl install` first. Before this, `make demo` could test a stale build.
+- Heals repeat within a test until a reviewer approves one into the Tier 0 cache
+  (`healorhalt approve <id>`); every attempt is logged.
+- M10 is the weakest heal (0.69): a renamed ID on an icon-only button leaves little to match.
 
 ### Phase 3: Local LLM tier (week 4, ~10 hrs)
 

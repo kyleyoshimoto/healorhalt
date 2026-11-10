@@ -26,10 +26,22 @@ class Locator:
     name: str
     strategy: str
     value: str
+    params: tuple[tuple[str, str], ...] = ()
 
     @property
     def by(self) -> str:
         return STRATEGIES[self.strategy]
+
+    @property
+    def key(self) -> str:
+        """Stable identity for fingerprints and heals: the logical name plus its parameters."""
+        if not self.params:
+            return self.name
+        return self.name + "[" + ",".join(f"{k}={v}" for k, v in self.params) + "]"
+
+    def replaced(self, strategy: str, value: str) -> "Locator":
+        """The same logical locator pointed at a different element, as a heal does."""
+        return Locator(self.name, strategy, value, self.params)
 
     def __str__(self) -> str:
         return f"L({self.name!r}) [{self.strategy}={self.value}]"
@@ -69,7 +81,7 @@ class LocatorMap:
             value = template.format(**params)
         except KeyError as missing:
             raise LocatorError(f"locator {name!r} needs parameter {missing}") from None
-        return Locator(name, strategy, value)
+        return Locator(name, strategy, value, tuple(sorted(params.items())))
 
     def __contains__(self, name: object) -> bool:
         return name in self._entries
