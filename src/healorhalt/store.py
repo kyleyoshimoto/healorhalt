@@ -45,6 +45,18 @@ CREATE TABLE IF NOT EXISTS heal_cache (
     approved_at TEXT NOT NULL,
     PRIMARY KEY (app, key)
 );
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id INTEGER PRIMARY KEY,
+    heal_id INTEGER NOT NULL REFERENCES heals (id),
+    model TEXT NOT NULL,
+    latency_s REAL NOT NULL,
+    prompt_tokens_estimate INTEGER NOT NULL,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    error TEXT,
+    prompt TEXT NOT NULL,
+    response TEXT
+);
 """
 
 
@@ -63,7 +75,9 @@ class HealRecord:
     key: str
     tier: int | None
     outcome: str
-    """healed, no_fingerprint, below_threshold or not_found."""
+    """healed, not_found, no_fingerprint, below_threshold (Tier 1), or for Tier 2 no_proposal
+    (the model answered that the element is gone, or named no drawn box), low_confidence or
+    llm_error (timeout, unreachable server, malformed answer)."""
     old_strategy: str
     old_value: str
     new_strategy: str | None = None
@@ -124,13 +138,64 @@ class Store:
             )
         return int(cursor.lastrowid or 0)
 
+    def log_llm_call(
+        self,
+        heal_id: int,
+        model: str,
+        latency_s: float,
+        prompt: str,
+        prompt_tokens_estimate: int,
+        response: str | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO llm_calls (heal_id, model, latency_s, prompt_tokens_estimate,"
+                " prompt_tokens, completion_tokens, error, prompt, response)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    heal_id,
+                    model,
+                    latency_s,
+                    prompt_tokens_estimate,
+                    prompt_tokens,
+                    completion_tokens,
+                    error,
+                    prompt,
+                    response,
+                ),
+            )
+
+    def llm_call(self, heal_id: int) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = self.db.execute(
+            "SELECT * FROM llm_calls WHERE heal_id = ?", (heal_id,)
+        ).fetchone()
+        return row
+
     def heals(self, run_id: str | None = None, limit: int = 50) -> list[sqlite3.Row]:
-        """A run's heal attempts in order, or the latest `limit` attempts across runs."""
+        """A run's heal attempts in order, or the latest `limit` attempts across runs.
+
+        Each row also has ``latency_s``, the LLM call's time for Tier 2 attempts, else None.
+        """
         if run_id is not None:
             return list(
-                self.db.execute("SELECT * FROM heals WHERE run_id = ? ORDER BY id", (run_id,))
+                self.db.execute(
+                    "SELECT heals.*, llm_calls.latency_s FROM heals"
+                    " LEFT JOIN llm_calls ON llm_calls.heal_id = heals.id"
+                    " WHERE run_id = ? ORDER BY heals.id",
+                    (run_id,),
+                )
             )
-        return list(self.db.execute("SELECT * FROM heals ORDER BY id DESC LIMIT ?", (limit,)))
+        return list(
+            self.db.execute(
+                "SELECT heals.*, llm_calls.latency_s FROM heals"
+                " LEFT JOIN llm_calls ON llm_calls.heal_id = heals.id"
+                " ORDER BY heals.id DESC LIMIT ?",
+                (limit,),
+            )
+        )
 
     def approve(self, heal_id: int) -> sqlite3.Row:
         """Copy a successful heal's locator into the Tier 0 cache."""

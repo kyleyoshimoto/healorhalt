@@ -6,6 +6,16 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var store = store
         Form {
+            if Mutation.isActive("M12") {
+                // M12 (B1+B2+B3): Log Out moves into a new Account section at the top, reworded
+                // and with a new identifier.
+                Section("Account") {
+                    Button("Sign out of Pantry", role: .destructive) {
+                        store.logOut()
+                    }
+                    .accessibilityIdentifier("settings.account.signOut")
+                }
+            }
             Section("Display") {
                 Toggle(
                     Mutation.pick("M09", "Display quantities", else: "Show quantities"),
@@ -16,11 +26,13 @@ struct SettingsView: View {
                 Toggle("Sort alphabetically", isOn: $store.sortAlphabetically)
                     .accessibilityIdentifier("settings.sortAlphabetically")
             }
-            Section {
-                Button(Mutation.pick("M06", "Sign Out", else: "Log Out"), role: .destructive) {
-                    store.logOut()
+            if !Mutation.isActive("M12") {
+                Section {
+                    Button(Mutation.pick("M06", "Sign Out", else: "Log Out"), role: .destructive) {
+                        store.logOut()
+                    }
+                    .accessibilityIdentifier("settings.logout")
                 }
-                .accessibilityIdentifier("settings.logout")
             }
             Section("About") {
                 HStack {

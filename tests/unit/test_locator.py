@@ -67,3 +67,19 @@ def test_demo_locator_file_parses() -> None:
     path = Path(__file__).parents[1] / "demo" / "locators.yaml"
     locators = LocatorMap.from_yaml(path)
     assert "login.submit" in locators
+
+
+def test_intent_is_kept_but_not_part_of_identity(tmp_path: Path) -> None:
+    locators = LocatorMap.from_yaml(
+        write(tmp_path, "login.submit: {id: login.submit, intent: signs in}\nplain: plain\n")
+    )
+    loc = locators.get("login.submit")
+    assert (loc.strategy, loc.value, loc.intent) == ("id", "login.submit", "signs in")
+    assert loc.replaced("id", "login.signIn").intent == "signs in"
+    assert loc.key == "login.submit"
+    assert locators.get("plain").intent == ""
+
+
+def test_intent_needs_exactly_one_strategy(tmp_path: Path) -> None:
+    with pytest.raises(LocatorError, match="exactly one"):
+        LocatorMap.from_yaml(write(tmp_path, "a: {intent: does a thing}\n"))

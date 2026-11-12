@@ -1,0 +1,11 @@
+{
+  "case": "M05",
+  "fingerprint_from": "base_detail",
+  "page_source": "M05_detail",
+  "locator": "detail.edit",
+  "action": "tap",
+  "before": "detail.edit",
+  "expected": "detail.modify",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":2,\"confidence\":0.9999999999999999,\"rationale\":\"Edit button still present at original position.\"}"
+}

@@ -131,14 +131,29 @@ class App:
         except NoSuchElementException:
             return None
 
-    def find(self, locator: Locator, timeout: float | None = None, heal: bool = True) -> WebElement:
-        """Find an element, healing the locator if it finds nothing and a healer is set."""
+    def find(
+        self,
+        locator: Locator,
+        timeout: float | None = None,
+        heal: bool = True,
+        action: str = "find",
+    ) -> WebElement:
+        """Find an element, healing the locator if it finds nothing and a healer is set.
+
+        `action` is what the step does with the element, in words for the LLM tier ("tap").
+        """
         try:
             element = self._wait_find(locator, self.timeout if timeout is None else timeout)
         except NoSuchElementException:
             if not heal or self.healer is None:
                 raise
-            healed = self.healer.heal(locator, self.driver.page_source, self._try_find)
+            healed = self.healer.heal(
+                locator,
+                self.driver.page_source,
+                self._try_find,
+                screenshot=self.driver.get_screenshot_as_png,
+                action=action,
+            )
             if healed is None:
                 raise
             return healed
@@ -170,7 +185,7 @@ class App:
         button wrapped in a narrower container, even when a person could tap it; tap its frame's
         centre instead.
         """
-        element = self.find(locator)
+        element = self.find(locator, action="tap")
         if element.get_attribute("hittable") == "false":
             rect = element.rect
             self.driver.execute_script(
@@ -186,7 +201,7 @@ class App:
         A SwiftUI Toggle is a full-width row whose centre is the label, and tapping it does
         nothing; the control is a child switch at the trailing edge, so tap that.
         """
-        element = self.find(locator)
+        element = self.find(locator, action="toggle")
         before = element.get_attribute("value")
         inner = element.find_elements(AppiumBy.IOS_CLASS_CHAIN, "**/XCUIElementTypeSwitch")
         (inner[0] if inner else element).click()
@@ -196,18 +211,18 @@ class App:
         )
 
     def type(self, locator: Locator, text: str) -> None:
-        element = self.find(locator)
+        element = self.find(locator, action="type text into")
         element.clear()
         element.send_keys(text)
 
     def label(self, locator: Locator) -> str:
-        return str(self.find(locator).get_attribute("label") or "")
+        return str(self.find(locator, action="read the label of").get_attribute("label") or "")
 
     def value(self, locator: Locator) -> str:
-        return str(self.find(locator).get_attribute("value") or "")
+        return str(self.find(locator, action="read the value of").get_attribute("value") or "")
 
     def is_enabled(self, locator: Locator) -> bool:
-        return bool(self.find(locator).is_enabled())
+        return bool(self.find(locator, action="check").is_enabled())
 
     def wait_for_screen(self, screen: str, timeout: float | None = None) -> None:
         """Wait until the screen's marker (``screen.<screen>``) is visible and the UI has settled.

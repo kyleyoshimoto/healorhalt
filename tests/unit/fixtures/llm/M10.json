@@ -1,0 +1,11 @@
+{
+  "case": "M10",
+  "fingerprint_from": "base_list",
+  "page_source": "M10_list",
+  "locator": "list.settings",
+  "action": "tap",
+  "before": "list.settings",
+  "expected": "list.preferences",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":1,\"confidence\":0.9999999999999999,\"rationale\":\"Settings button still present at original position\"}"
+}

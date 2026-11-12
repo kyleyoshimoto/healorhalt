@@ -1,7 +1,9 @@
 """Save page-source XML of each demo screen, unmutated and under each mutation.
 
-The XML goes to tests/unit/fixtures/xml/ for the Tier 1 scoring tests, which then run without a
-simulator. Needs Appium running and a built app (make app). Rerun after changing the demo app.
+The XML goes to tests/unit/fixtures/xml/ for the Tier 1 scoring and LLM contract tests, which
+then run without a simulator. Screenshots go to artifacts/fixtures/png/ (not committed), for
+trying Tier 2 prompts offline (scripts/eval_tier2.py). Needs Appium running and a built app
+(make app). Rerun after changing the demo app.
 """
 
 import time
@@ -12,6 +14,7 @@ from healorhalt.session import App, boot_simulator, ios_session, resolve_udid
 BUNDLE = "com.healorhalt.pantry"
 APP = Path("apps/demo-ios/build/Build/Products/Debug-iphonesimulator/Pantry.app")
 OUT = Path("tests/unit/fixtures/xml")
+PNG_OUT = Path("artifacts/fixtures/png")
 
 # Screen captured for each case; "base" captures every screen.
 CASES = {
@@ -26,6 +29,10 @@ CASES = {
     "M08": ["login"],
     "M09": ["settings"],
     "M10": ["list"],
+    "M11": ["login"],
+    "M12": ["settings"],
+    "M13": ["detail"],
+    "M14": ["list"],
 }
 
 
@@ -42,6 +49,7 @@ def tap(app: App, *ids: str) -> None:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    PNG_OUT.mkdir(parents=True, exist_ok=True)
     udid = resolve_udid("iPhone 17", "26.4")
     boot_simulator(udid)
     with ios_session(udid, BUNDLE, app=APP) as driver:
@@ -53,6 +61,7 @@ def main() -> None:
             def save(screen: str, case: str = case, screens: list[str] = screens) -> None:
                 if screen in screens:
                     (OUT / f"{case}_{screen}.xml").write_text(driver.page_source, encoding="utf-8")
+                    driver.get_screenshot_as_file(str(PNG_OUT / f"{case}_{screen}.png"))
                     print("saved", case, screen)
 
             save("login")
@@ -60,7 +69,7 @@ def main() -> None:
                 continue
             driver.find_element("accessibility id", "login.username").send_keys("demo")
             driver.find_element("accessibility id", "login.password").send_keys("pantry123")
-            tap(app, "login.submit", "login.signIn")
+            tap(app, "login.submit", "login.signIn", "Continue")
             save("list")
             if "add" in screens:
                 tap(app, "list.add")
@@ -72,7 +81,7 @@ def main() -> None:
                 driver.back()
                 time.sleep(2)
             if "settings" in screens:
-                tap(app, "list.settings", "list.preferences")
+                tap(app, "list.settings", "list.preferences", "nav.preferences")
                 save("settings")
 
 

@@ -1,0 +1,11 @@
+{
+  "case": "M03",
+  "fingerprint_from": "base_list",
+  "page_source": "M03_list",
+  "locator": "list.add",
+  "action": "tap",
+  "before": "list.add",
+  "expected": "list.add",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":2,\"confidence\":100,\"rationale\":\"The 'Add item' button (id='list.add') is still present at position 2.\"}"
+}

@@ -94,3 +94,44 @@ cases:
       - tests/demo/test_settings.py::test_log_out
       - tests/demo/test_settings.py::test_sort_alphabetically
     expected: HEAL
+
+  # M11-M14 change several things at once, so the Tier 1 heuristics have little left to match on.
+  # They exist to test whether the LLM tier recovers what the heuristics miss (Phase 3).
+
+  - id: M11
+    app: pantry
+    kind: B2+B6
+    description: Sign-in button reworded "Sign in" -> "Continue" and its identifier removed
+    tests_affected:
+      - tests/demo/test_login.py::test_valid_login_shows_items
+      - tests/demo/test_items.py::test_seeded_items_are_listed
+    expected: HEAL
+
+  - id: M12
+    app: pantry
+    kind: B1+B2+B3
+    description: >-
+      Log Out button moved into a new Account section at the top of Settings, reworded
+      "Log Out" -> "Sign out of Pantry" and renamed settings.logout -> settings.account.signOut
+    tests_affected:
+      - tests/demo/test_settings.py::test_log_out
+    expected: HEAL
+
+  - id: M13
+    app: pantry
+    kind: B2+B6
+    description: Detail screen's Edit button reworded "Edit" -> "Change" and its identifier removed
+    tests_affected:
+      - tests/demo/test_items.py::test_edit_item_quantity
+    expected: HEAL
+
+  - id: M14
+    app: pantry
+    kind: B1+B2+B3
+    description: >-
+      Settings (gear) button moved from the leading to the trailing side of the nav bar,
+      relabelled "Settings" -> "Preferences" and renamed list.settings -> nav.preferences
+    tests_affected:
+      - tests/demo/test_settings.py::test_log_out
+      - tests/demo/test_settings.py::test_sort_alphabetically
+    expected: HEAL

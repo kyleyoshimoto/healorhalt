@@ -1,0 +1,11 @@
+{
+  "case": "M12",
+  "fingerprint_from": "base_settings",
+  "page_source": "M12_settings",
+  "locator": "settings.logout",
+  "action": "tap",
+  "before": "settings.logout",
+  "expected": "settings.account.signOut",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":3,\"confidence\":100,\"rationale\":\"Sign out of Pantry matches logout function.\"}"
+}

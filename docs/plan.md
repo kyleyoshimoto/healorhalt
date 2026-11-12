@@ -9,8 +9,9 @@ Oct 30, 2026 · Kyle Yoshimoto
 | 0. Environment and skeleton | Done (Nov 2, 2026) |
 | 1. Demo app and baseline tests | Done (Nov 3, 2026) |
 | 2. Fingerprints and the cheap healing tiers | Done (Nov 10, 2026) |
-| 3. Local LLM tier | Next |
-| 4–9 | Not started |
+| 3. Local LLM tier | Done (Nov 11, 2026) |
+| 4. Verdict engine | Next |
+| 5–9 | Not started |
 
 ### Environment as of Phase 0
 
@@ -259,18 +260,63 @@ Notes from building it:
   (`healorhalt approve <id>`); every attempt is logged.
 - M10 is the weakest heal (0.69): a renamed ID on an icon-only button leaves little to match.
 
-### Phase 3: Local LLM tier (week 4, ~10 hrs)
+### Phase 3: Local LLM tier (week 4, ~10 hrs) — done
 
-- [ ] Write `prune.py`: cut the XCUITest XML down to the subtree around the expected location plus
+- [x] Write `prune.py`: cut the XCUITest XML down to the subtree around the expected location plus
       interactive nodes, aiming for under 2K tokens
-- [ ] Tier 2, LLM: send the pruned tree, a screenshot with numbered boxes drawn over candidates
+- [x] Tier 2, LLM: send the pruned tree, a screenshot with numbered boxes drawn over candidates
       (set-of-marks), the fingerprint and the step's intent ("tap the button that submits login")
-- [ ] Require a JSON answer: `{candidate_id, confidence, element_still_exists: bool, rationale}`
-- [ ] Log latency and tokens per call, with a timeout and a fallback to "no proposal"
-- [ ] Write `tests/unit/test_llm_contract.py` with recorded responses, so CI doesn't need Ollama
+- [x] Require a JSON answer: `{candidate_id, confidence, element_still_exists: bool, rationale}`
+- [x] Log latency and tokens per call, with a timeout and a fallback to "no proposal"
+- [x] Write `tests/unit/test_llm_contract.py` with recorded responses, so CI doesn't need Ollama
 
 **Exit:** the LLM tier recovers cases the heuristics missed, with average latency under 10 s per
-heal on your Mac.
+heal on your Mac. Met by `make phase3`: of 14 benign mutations, `--heal=heuristic` recovered 12
+and `--heal=llm` recovered all 14. Tier 2 healed the two the heuristics missed, M13 and M14, in
+9.5 s on average (10.0 s max, 3 calls).
+
+Four harder cases were added for this phase, each changing several things at once. Their labels
+were written before any healing run.
+
+| Case | Kind | Change | Tier 1 | Tier 2 |
+|---|---|---|---|---|
+| M11 | B2+B6 | Sign-in reworded to "Continue", identifier removed | 0.67, healed | not needed |
+| M12 | B1+B2+B3 | Log Out moved to a new Account section, reworded and renamed | 0.62, healed | not needed |
+| M13 | B2+B6 | Edit reworded to "Change", identifier removed | 0.40, missed | healed, 10.0 s |
+| M14 | B1+B2+B3 | Settings button moved, relabelled "Preferences" and renamed | 0.44, missed | healed, 9.2 s |
+
+`scripts/eval_tier2.py` asks Tier 2 directly about every case from saved fixtures, skipping
+Tier 1. It picked the right element in all 14 benign cases, at 2.5 s on average with no simulator
+running. Its three negative cases ask for an element that isn't on the screen at all:
+
+| Case | Asked for | On screen | Answer |
+|---|---|---|---|
+| N01 | Delete Item | Item list | Wrong: picked the Eggs row |
+| N02 | Log Out | Item detail | Right: element gone |
+| N03 | Add sheet's Save | Item list | Wrong: picked the Add (+) button |
+
+Notes from building it:
+
+- Ollama 0.40's qwen3-vl renderer ignores `think=False`, so the model reasoned for about 2,500
+  tokens (106 s) per heal. Prefilling the reply with an empty `<think></think>` block brings it to
+  under 50 output tokens. The answer's fields are ordered so the model decides whether the element
+  exists before it picks a box; that fixed N02, which had picked Delete Item for Log Out.
+- The model answers confidence as a percentage about half the time (100 for 1.0), so the schema
+  reads values from 1 to 100 as percentages. Ollama's grammar doesn't enforce JSON-schema ranges.
+- Confidence carries almost no signal: right and wrong answers both come back at 0.9 to 1.0. It
+  can't be the deciding input, which the Phase 4 rule already says.
+- Live calls took about 9.5 s against 2 to 3 s offline, with the same ~1,700 prompt tokens, most
+  likely because the simulator shares the GPU. That is close to the 10 s limit; a smaller
+  screenshot or the 4B model are the first levers if it creeps up.
+- Tier 2 runs only in `--heal=llm`, and only after Tier 1 finds nothing above its threshold. Until
+  the verdict engine exists, a Tier 2 heal is accepted when the model says the element exists with
+  confidence of at least 0.5, so N01 and N03 show it would heal onto a look-alike. The contract
+  tests mark those two as expected failures for Phase 4 to fix.
+- Locators can carry an `intent`, a plain-words purpose given to the model
+  (`{id: login.submit, intent: submits the username and password to sign in}`).
+- Every call is logged to the `llm_calls` table with the prompt, raw answer, latency and token
+  counts; a timeout (30 s by default), an unreachable server or a malformed answer is logged as
+  `llm_error` and the test fails normally.
 
 ### Phase 4: Verdict engine (week 5, ~10 hrs)
 

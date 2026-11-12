@@ -1,6 +1,7 @@
 # Logical locator names used by the demo-app tests. A bare string is an accessibility id;
 # otherwise give one {strategy: value} with strategy id, predicate, class_chain or xpath.
-# {placeholders} are filled from L(name, key=value).
+# {placeholders} are filled from L(name, key=value). An optional `intent` says in plain words what
+# the element is for; the LLM tier uses it when id, label and position have all changed.
 #
 # Most locators are accessibility ids, but real suites also use labels, structure and position,
 # and those are what UI changes break first. A few entries below are written that way on purpose,
@@ -11,42 +12,58 @@ screen.login: login.title
 screen.list: list.count
 screen.add: add.name
 screen.detail: detail.name
-screen.settings: settings.logout
+screen.settings: settings.sortAlphabetically
 
 # Structural: the fields that follow the title (broken by M08, which wraps them in a container).
-login.username: {xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeTextField'}
-login.password: {xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeSecureTextField'}
-login.submit: login.submit
+login.username:
+  xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeTextField'
+  intent: takes the username
+login.password:
+  xpath: '//XCUIElementTypeStaticText[@name="login.title"]/following-sibling::XCUIElementTypeSecureTextField'
+  intent: takes the password
+login.submit: {id: login.submit, intent: submits the username and password to sign in}
 login.error: login.error
 
 # Structural: the text field just above the item count (broken by M07, which moves it below).
-list.search: {xpath: '//XCUIElementTypeStaticText[@name="list.count"]/preceding-sibling::XCUIElementTypeTextField'}
+list.search:
+  xpath: '//XCUIElementTypeStaticText[@name="list.count"]/preceding-sibling::XCUIElementTypeTextField'
+  intent: filters the item list by name
 list.count: list.count
 list.empty: list.empty
 # Positional: the nav-bar button on the trailing side (broken by M03, which moves it leading).
-list.add: {xpath: '//XCUIElementTypeNavigationBar//XCUIElementTypeButton[@x > 200]'}
-list.settings: list.settings
+list.add:
+  xpath: '//XCUIElementTypeNavigationBar//XCUIElementTypeButton[@x > 200]'
+  intent: opens the form for adding a new item
+list.settings: {id: list.settings, intent: opens the app's settings screen}
 list.row: item.row.{name}
 list.rows: {predicate: "name BEGINSWITH 'item.row.'"}
 
 add.name: add.name
 add.quantity: add.quantity
 # By label (broken by M02, which rewords "Save" to "Add").
-add.save: {predicate: "type == 'XCUIElementTypeButton' AND label == 'Save'"}
+add.save:
+  predicate: "type == 'XCUIElementTypeButton' AND label == 'Save'"
+  intent: saves the new item and closes the form
 add.cancel: add.cancel
 
 detail.name: detail.name
 detail.quantity: detail.quantity
-detail.edit: detail.edit
+detail.edit: {id: detail.edit, intent: switches the item's details into editing mode}
 detail.save: detail.save
 detail.nameField: detail.nameField
 detail.quantityField: detail.quantityField
 # Structural: the button three levels inside a list cell (broken by M04, which wraps it).
-detail.delete: {xpath: '//XCUIElementTypeCell/*/*/*/XCUIElementTypeButton[@label="Delete Item"]'}
+detail.delete:
+  xpath: '//XCUIElementTypeCell/*/*/*/XCUIElementTypeButton[@label="Delete Item"]'
+  intent: deletes this item
 detail.confirmDelete: detail.confirmDelete
 
-settings.showQuantities: settings.showQuantities
+settings.showQuantities:
+  id: settings.showQuantities
+  intent: turns showing item quantities in the list on or off
 settings.sortAlphabetically: settings.sortAlphabetically
 # By label (broken by M06, which rewords "Log Out" to "Sign Out").
-settings.logout: {predicate: "type == 'XCUIElementTypeButton' AND label == 'Log Out'"}
+settings.logout:
+  predicate: "type == 'XCUIElementTypeButton' AND label == 'Log Out'"
+  intent: signs the user out
 settings.mutation: settings.mutation

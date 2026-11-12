@@ -1,0 +1,11 @@
+{
+  "case": "N03",
+  "fingerprint_from": "base_add",
+  "page_source": "base_list",
+  "locator": "add.save",
+  "action": "tap",
+  "before": "add.save",
+  "expected": null,
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":2,\"confidence\":0.9999999999999999,\"rationale\":\"The 'Add item' button matches the 'add.save' function.\"}"
+}

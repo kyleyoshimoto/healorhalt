@@ -1,0 +1,11 @@
+{
+  "case": "M13",
+  "fingerprint_from": "base_detail",
+  "page_source": "M13_detail",
+  "locator": "detail.edit",
+  "action": "tap",
+  "before": "detail.edit",
+  "expected": "Change",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":2,\"confidence\":0.9999999999999999,\"rationale\":\"The 'Change' button (box 2) is the likely replacement for 'Edit' as it enables editing mode.\"}"
+}

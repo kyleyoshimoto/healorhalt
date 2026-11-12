@@ -1,0 +1,11 @@
+{
+  "case": "M07",
+  "fingerprint_from": "base_list",
+  "page_source": "M07_list",
+  "locator": "list.search",
+  "action": "type text into",
+  "before": "list.search",
+  "expected": "list.search",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":5,\"confidence\":100,\"rationale\":\"The search field is still present with same ID and position.\"}"
+}

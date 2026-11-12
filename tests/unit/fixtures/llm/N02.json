@@ -1,0 +1,11 @@
+{
+  "case": "N02",
+  "fingerprint_from": "base_settings",
+  "page_source": "base_detail",
+  "locator": "settings.logout",
+  "action": "tap",
+  "before": "settings.logout",
+  "expected": null,
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":false,\"candidate_id\":null,\"confidence\":0.9999999999999999,\"rationale\":\"No 'Log Out' button found; screen shows item details.\"}"
+}

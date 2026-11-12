@@ -62,12 +62,15 @@ struct ItemDetailView: View {
                     }
                     .accessibilityIdentifier("detail.save")
                 } else {
-                    Button("Edit") {
+                    // M13 (B2+B6): reworded "Edit" -> "Change", and the identifier removed.
+                    Button(Mutation.pick("M13", "Change", else: "Edit")) {
                         draftName = item.name
                         draftQuantity = "\(item.quantity)"
                         isEditing = true
                     }
-                    .accessibilityIdentifier(Mutation.pick("M05", "detail.modify", else: "detail.edit"))
+                    .accessibilityIdentifier(
+                        Mutation.isActive("M13")
+                            ? "" : Mutation.pick("M05", "detail.modify", else: "detail.edit"))
                 }
             }
             .alert("Delete \(item.name)?", isPresented: $isConfirmingDelete) {

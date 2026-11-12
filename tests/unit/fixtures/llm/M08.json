@@ -1,0 +1,11 @@
+{
+  "case": "M08",
+  "fingerprint_from": "base_login",
+  "page_source": "M08_login",
+  "locator": "login.username",
+  "action": "type text into",
+  "before": "login.username",
+  "expected": "login.username",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":2,\"confidence\":100,\"rationale\":\"Element matches description and position.\"}"
+}
