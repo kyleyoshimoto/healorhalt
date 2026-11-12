@@ -1,0 +1,11 @@
+{
+  "case": "M04",
+  "fingerprint_from": "base_detail",
+  "page_source": "M04_detail",
+  "locator": "detail.delete",
+  "action": "tap",
+  "before": "detail.delete",
+  "expected": "detail.delete",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":10,\"confidence\":100,\"rationale\":\"Element matches description and position.\"}"
+}

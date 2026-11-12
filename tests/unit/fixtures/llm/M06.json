@@ -1,0 +1,11 @@
+{
+  "case": "M06",
+  "fingerprint_from": "base_settings",
+  "page_source": "M06_settings",
+  "locator": "settings.logout",
+  "action": "tap",
+  "before": "settings.logout",
+  "expected": "settings.logout",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":8,\"confidence\":100,\"rationale\":\"Sign Out button matches old position and label.\"}"
+}

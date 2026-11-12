@@ -10,7 +10,8 @@ import pytest
 from appium import webdriver
 
 from healorhalt.fingerprint import Recorder
-from healorhalt.heal import DEFAULT_THRESHOLD, Healer
+from healorhalt.heal import DEFAULT_THRESHOLD, LLM_MIN_CONFIDENCE, Healer
+from healorhalt.llm.ollama_client import DEFAULT_MODEL
 from healorhalt.locator import LocatorMap, use_locators
 from healorhalt.session import (
     APPIUM_URL,
@@ -24,7 +25,7 @@ from healorhalt.store import Store
 
 FAILURES_DIR = Path("artifacts/failures")
 HEAL_MODES = ("off", "cache", "heuristic", "llm", "full")
-IMPLEMENTED_HEAL_MODES = ("off", "cache", "heuristic")
+IMPLEMENTED_HEAL_MODES = ("off", "cache", "heuristic", "llm")
 RUN_ID = pytest.StashKey[str]()
 
 
@@ -58,6 +59,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "healorhalt_heal_threshold",
         "Minimum Tier 1 score for a heal",
         default=str(DEFAULT_THRESHOLD),
+    )
+    parser.addini("healorhalt_llm_model", "Ollama model for Tier 2", default=DEFAULT_MODEL)
+    parser.addini(
+        "healorhalt_llm_timeout", "Seconds before a Tier 2 call is abandoned", default="30"
+    )
+    parser.addini(
+        "healorhalt_llm_min_confidence",
+        "Lowest model confidence a Tier 2 heal is accepted at",
+        default=str(LLM_MIN_CONFIDENCE),
     )
 
 
@@ -127,6 +137,11 @@ def app(
     mutation = pytestconfig.getoption("--mutation")
     heal = pytestconfig.getoption("--heal")
     healer = None
+    llm_client = None
+    if heal == "llm":
+        from healorhalt.heal.tier2_llm import make_client
+
+        llm_client = make_client(timeout=float(pytestconfig.getini("healorhalt_llm_timeout")))
     if heal != "off":
         healer = Healer(
             store,
@@ -136,6 +151,9 @@ def app(
             test=request.node.nodeid,
             mutation=mutation,
             threshold=float(pytestconfig.getini("healorhalt_heal_threshold")),
+            llm_client=llm_client,
+            llm_model=str(pytestconfig.getini("healorhalt_llm_model")),
+            llm_min_confidence=float(pytestconfig.getini("healorhalt_llm_min_confidence")),
         )
     recorder = Recorder(driver) if pytestconfig.getoption("--record") else None
     app = App(driver, bundle_id, healer=healer, recorder=recorder)
@@ -175,10 +193,20 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
     terminalreporter.section("healorhalt heals")
     if not heals:
         terminalreporter.write_line("no locator needed healing")
+    llm_seconds: list[float] = []
     for heal in heals:
         score = f"{heal['score']:.2f}" if heal["score"] is not None else "-"
         new = f"{heal['new_strategy']}={heal['new_value']}" if heal["new_strategy"] else "-"
-        terminalreporter.write_line(
+        line = (
             f"#{heal['id']} {heal['outcome']:<15} tier {heal['tier']} score {score}  "
             f"{heal['key']}: {heal['old_strategy']}={heal['old_value']} -> {new}"
+        )
+        if heal["latency_s"] is not None:
+            llm_seconds.append(heal["latency_s"])
+            line += f"  ({heal['latency_s']:.1f} s)"
+        terminalreporter.write_line(line)
+    if llm_seconds:
+        average, slowest = sum(llm_seconds) / len(llm_seconds), max(llm_seconds)
+        terminalreporter.write_line(
+            f"{len(llm_seconds)} LLM calls, {average:.1f} s on average, {slowest:.1f} s max"
         )

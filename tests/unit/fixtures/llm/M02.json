@@ -1,0 +1,11 @@
+{
+  "case": "M02",
+  "fingerprint_from": "base_add",
+  "page_source": "M02_add",
+  "locator": "add.save",
+  "action": "tap",
+  "before": "add.save",
+  "expected": "add.save",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":4,\"confidence\":0.9999999999999999,\"rationale\":\"Old 'add.save' matches new 'Add' button (4) with same position/label.\"}"
+}

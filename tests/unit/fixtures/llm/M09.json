@@ -1,0 +1,11 @@
+{
+  "case": "M09",
+  "fingerprint_from": "base_settings",
+  "page_source": "M09_settings",
+  "locator": "settings.showQuantities",
+  "action": "toggle",
+  "before": "settings.showQuantities",
+  "expected": "settings.quantities",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":5,\"confidence\":0.9999999999999999,\"rationale\":\"Switch for 'Display quantities' is present and matches the test's target.\"}"
+}

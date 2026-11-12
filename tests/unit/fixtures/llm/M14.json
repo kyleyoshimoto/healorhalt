@@ -1,0 +1,11 @@
+{
+  "case": "M14",
+  "fingerprint_from": "base_list",
+  "page_source": "M14_list",
+  "locator": "list.settings",
+  "action": "tap",
+  "before": "list.settings",
+  "expected": "nav.preferences",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":1,\"confidence\":0.9999999999999999,\"rationale\":\"Settings button now labeled 'Preferences' at position 1.\"}"
+}

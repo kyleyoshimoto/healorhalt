@@ -1,0 +1,11 @@
+{
+  "case": "N01",
+  "fingerprint_from": "base_detail",
+  "page_source": "base_list",
+  "locator": "detail.delete",
+  "action": "tap",
+  "before": "detail.delete",
+  "expected": null,
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":7,\"confidence\":0.9999999999999999,\"rationale\":\"Old 'Delete Item' likely replaced by row actions (e.g., 'Eggs, 12' button).\"}"
+}

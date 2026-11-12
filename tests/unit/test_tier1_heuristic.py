@@ -80,3 +80,17 @@ def test_locator_for_falls_back_to_label_when_id_is_just_the_label() -> None:
         "predicate",
         "type == 'XCUIElementTypeStaticText' AND label == 'Name'",
     )
+
+
+# Several changes at once leave the heuristics too little to match on; Tier 2 handles these.
+MISSED = [
+    ("M13", "detail", '//XCUIElementTypeButton[@name="detail.edit"]'),
+    ("M14", "list", '//XCUIElementTypeButton[@name="list.settings"]'),
+]
+
+
+@pytest.mark.parametrize(("mutation", "screen", "before"), MISSED, ids=[c[0] for c in MISSED])
+def test_multi_change_cases_fall_below_threshold(mutation: str, screen: str, before: str) -> None:
+    base = load(f"base_{screen}")
+    ranked = rank(fingerprint("target", one(base, before), base), load(f"{mutation}_{screen}"))
+    assert ranked[0].score < DEFAULT_THRESHOLD

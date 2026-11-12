@@ -45,13 +45,17 @@ struct ItemListView: View {
             }
             .navigationTitle("Items")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                // M14 (B1+B2+B3): the Settings button moves to the trailing side, relabelled
+                // "Preferences" and with a new identifier.
+                ToolbarItem(placement: Mutation.pick("M14", .topBarTrailing, else: .topBarLeading)) {
                     NavigationLink(value: Route.settings) {
                         Image(systemName: "gearshape")
                     }
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel(Mutation.pick("M14", "Preferences", else: "Settings"))
                     .accessibilityIdentifier(
-                        Mutation.pick("M10", "list.preferences", else: "list.settings"))
+                        Mutation.isActive("M14")
+                            ? "nav.preferences"
+                            : Mutation.pick("M10", "list.preferences", else: "list.settings"))
                 }
                 // M03 (B3): the Add button moves to the leading side, next to Settings.
                 ToolbarItem(placement: Mutation.pick("M03", .topBarLeading, else: .topBarTrailing)) {

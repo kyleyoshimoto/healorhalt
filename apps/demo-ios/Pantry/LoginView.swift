@@ -24,14 +24,17 @@ struct LoginView: View {
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("login.error")
             }
-            Button("Sign in") {
+            // M11 (B2+B6): reworded "Sign in" -> "Continue", and the identifier removed.
+            Button(Mutation.pick("M11", "Continue", else: "Sign in")) {
                 if !store.logIn(username: username, password: password) {
                     error = "Incorrect username or password"
                 }
             }
             .buttonStyle(.borderedProminent)
             .disabled(username.isEmpty || password.isEmpty)
-            .accessibilityIdentifier(Mutation.pick("M01", "login.signIn", else: "login.submit"))
+            .accessibilityIdentifier(
+                Mutation.isActive("M11")
+                    ? "" : Mutation.pick("M01", "login.signIn", else: "login.submit"))
         }
         .padding(32)
     }

@@ -1,0 +1,11 @@
+{
+  "case": "M01",
+  "fingerprint_from": "base_login",
+  "page_source": "M01_login",
+  "locator": "login.submit",
+  "action": "tap",
+  "before": "login.submit",
+  "expected": "login.signIn",
+  "model": "qwen3-vl:8b",
+  "response": "{\"element_still_exists\":true,\"candidate_id\":4,\"confidence\":100,\"rationale\":\"Button 'Sign in' matches description and position.\"}"
+}
