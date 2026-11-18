@@ -1,13 +1,16 @@
 """Appium session and xcrun simctl helpers."""
 
+import contextlib
 import json
 import re
 import subprocess
 import time
-from collections.abc import Iterator
+from collections import Counter
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from appium import webdriver
 from appium.options.ios import XCUITestOptions
@@ -16,7 +19,23 @@ from appium.webdriver.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
+from healorhalt import evidence
+from healorhalt.evidence import Evidence, Target
+from healorhalt.fingerprint import parse, rect_of
+from healorhalt.heal import Heal
 from healorhalt.locator import L, Locator
+from healorhalt.verdict import (
+    HALT,
+    Check,
+    HealHalted,
+    Verdict,
+    check_effect,
+    check_enabled,
+    check_replay,
+    check_screen,
+    decide,
+    screen_of,
+)
 
 if TYPE_CHECKING:
     from healorhalt.fingerprint import Recorder
@@ -88,11 +107,25 @@ def capture(driver: webdriver.Remote, out_dir: Path, name: str) -> tuple[Path, P
     return png, xml
 
 
+@dataclass
+class PendingHeal:
+    """A healed step under the verdict engine, with its checks and evidence so far."""
+
+    heal: "Heal"
+    evidence: Evidence
+    checks: list[Check]
+    verdict: Verdict | None = None
+    card: Path | None = None
+
+
 class App:
     """The app under test, driven through logical locators.
 
     Every element lookup goes through `find`. With a recorder, each element found is
-    fingerprinted; with a healer, a locator that finds nothing is handed to the healing tiers.
+    fingerprinted and each step's resulting screen is saved; with a healer, a locator that finds
+    nothing is handed to the healing tiers. In full mode a healed step is judged by the verdict
+    engine: checks before the action, checks after it, and a last one when the test ends
+    (`finish`). A HALT stops the test with HealHalted and an evidence card.
     """
 
     def __init__(
@@ -102,12 +135,21 @@ class App:
         timeout: float = 5.0,
         healer: "Healer | None" = None,
         recorder: "Recorder | None" = None,
+        screens: Mapping[str, str] | None = None,
+        evidence_dir: Path = Path("artifacts/evidence"),
     ) -> None:
         self.driver = driver
         self.bundle_id = bundle_id
         self.timeout = timeout
         self.healer = healer
         self.recorder = recorder
+        self.screens = dict(screens or {})
+        """Screen names mapped to the identifier that marks each screen (``screen.*`` locators)."""
+        self.evidence_dir = evidence_dir
+        self.verdicts: list[PendingHeal] = []
+        """This test's judged heals, in order."""
+        self._steps: Counter[str] = Counter()
+        self._heal: Heal | None = None
 
     def launch(self, mutation: str | None = None) -> None:
         """Relaunch from a clean state, with `-mutation <ID>` if given."""
@@ -131,6 +173,9 @@ class App:
         except NoSuchElementException:
             return None
 
+    def _count(self, locator: Locator) -> int:
+        return len(self.driver.find_elements(locator.by, locator.value))
+
     def find(
         self,
         locator: Locator,
@@ -142,6 +187,7 @@ class App:
 
         `action` is what the step does with the element, in words for the LLM tier ("tap").
         """
+        self._heal = None
         try:
             element = self._wait_find(locator, self.timeout if timeout is None else timeout)
         except NoSuchElementException:
@@ -153,10 +199,14 @@ class App:
                 self._try_find,
                 screenshot=self.driver.get_screenshot_as_png,
                 action=action,
+                count=self._count,
             )
             if healed is None:
+                if self.healer.verifies:
+                    self._halt_missing(locator, action)
                 raise
-            return healed
+            self._heal = healed
+            return healed.element
         if self.recorder is not None:
             self.recorder.record(locator, element)
         return element
@@ -178,6 +228,9 @@ class App:
             message=f"{locator} still present",
         )
 
+    # Steps. Each finds its element, then `_before` judges a healed one (full mode), the action
+    # runs, and `_after` records or checks the screen it led to.
+
     def tap(self, locator: Locator) -> None:
         """Tap an element.
 
@@ -186,6 +239,7 @@ class App:
         centre instead.
         """
         element = self.find(locator, action="tap")
+        pending = self._before(locator, "tap", element)
         if element.get_attribute("hittable") == "false":
             rect = element.rect
             self.driver.execute_script(
@@ -194,6 +248,7 @@ class App:
             )
         else:
             element.click()
+        self._after(locator, "tap", pending)
 
     def toggle(self, locator: Locator) -> None:
         """Flip a switch and wait for its value to change.
@@ -202,27 +257,172 @@ class App:
         nothing; the control is a child switch at the trailing edge, so tap that.
         """
         element = self.find(locator, action="toggle")
-        before = element.get_attribute("value")
+        pending = self._before(locator, "toggle", element)
+        before = _attr(element, "value")
         inner = element.find_elements(AppiumBy.IOS_CLASS_CHAIN, "**/XCUIElementTypeSwitch")
         (inner[0] if inner else element).click()
-        WebDriverWait(self.driver, self.timeout, 0.25).until(
-            lambda _: element.get_attribute("value") != before,
-            message=f"{locator} didn't change from {before!r}",
-        )
+        try:
+            WebDriverWait(self.driver, self.timeout, 0.25).until(
+                lambda _: element.get_attribute("value") != before,
+                message=f"{locator} didn't change from {before!r}",
+            )
+        except TimeoutException:
+            if pending is None:
+                raise
+        effect = None
+        if pending is not None:
+            now = _attr(element, "value")
+            effect = check_effect("toggle", pending.evidence.target_type, before, now)
+        self._after(locator, "toggle", pending, effect)
 
     def type(self, locator: Locator, text: str) -> None:
         element = self.find(locator, action="type text into")
+        pending = self._before(locator, "type text into", element)
         element.clear()
         element.send_keys(text)
+        effect = None
+        if pending is not None:
+            pending.evidence.typed = text
+            now = _attr(element, "value")
+            effect = check_effect("type text into", pending.evidence.target_type, text, now)
+        self._after(locator, "type text into", pending, effect)
+
+    def _read(self, locator: Locator, action: str, attribute: str) -> str:
+        element = self.find(locator, action=action)
+        pending = self._before(locator, action, element)
+        result = str(element.get_attribute(attribute) or "")
+        self._after(locator, action, pending)
+        return result
 
     def label(self, locator: Locator) -> str:
-        return str(self.find(locator, action="read the label of").get_attribute("label") or "")
+        return self._read(locator, "read the label of", "label")
 
     def value(self, locator: Locator) -> str:
-        return str(self.find(locator, action="read the value of").get_attribute("value") or "")
+        return self._read(locator, "read the value of", "value")
 
     def is_enabled(self, locator: Locator) -> bool:
-        return bool(self.find(locator, action="check").is_enabled())
+        element = self.find(locator, action="check")
+        pending = self._before(locator, "check", element)
+        enabled = bool(element.is_enabled())
+        self._after(locator, "check", pending)
+        return enabled
+
+    # The verdict engine's view of a step.
+
+    def _before(self, locator: Locator, action: str, element: WebElement) -> PendingHeal | None:
+        """Start judging the step if its element was healed: round 1 checks and the screen
+        before the action. HALT here stops the step before it acts."""
+        heal, self._heal = self._heal, None
+        if heal is None or self.healer is None or not self.healer.verifies:
+            return None
+        checks = [*heal.checks, check_enabled(action, bool(element.is_enabled()))]
+        evidence = Evidence(
+            key=locator.key,
+            action=action,
+            window_width=int(self.driver.get_window_size()["width"]),
+            fingerprint=heal.fingerprint,
+            target=_target(heal, element),
+            before=self.healer.store.fingerprint_screenshot(self.bundle_id, locator.key),
+            after=self.driver.get_screenshot_as_png(),
+            data={
+                "heal_id": heal.heal_id,
+                "tier": heal.tier,
+                "score": round(heal.score, 3),
+                "old_locator": f"{locator.strategy}={locator.value}",
+                "new_locator": f"{heal.locator.strategy}={heal.locator.value}",
+                "test": self.healer.test,
+                "mutation": self.healer.mutation,
+                **heal.data,
+            },
+        )
+        pending = PendingHeal(heal, evidence, checks)
+        verdict = decide(checks)
+        if verdict.decision == HALT:
+            self._judge(pending, verdict)
+        return pending
+
+    def _after(
+        self,
+        locator: Locator,
+        action: str,
+        pending: PendingHeal | None,
+        effect: Check | None = None,
+    ) -> None:
+        """Record the screen the step led to (with a recorder), or check it (a healed step)."""
+        self._steps[f"{locator.key}|{action}"] += 1
+        step = f"{locator.key}|{action}|{self._steps[f'{locator.key}|{action}']}"
+        if self.recorder is None and pending is None:
+            return
+        self.wait_settled()
+        screen = screen_of(parse(self.driver.page_source), self.screens)
+        if self.recorder is not None:
+            self.recorder.record_screen(step, screen)
+        if pending is None or self.healer is None:
+            return
+        expected = self.healer.store.screen(self.bundle_id, self.healer.test, step)
+        pending.evidence.result = self.driver.get_screenshot_as_png()
+        pending.evidence.expected_screen = expected
+        pending.evidence.actual_screen = screen
+        pending.checks += [
+            effect or check_effect(action, pending.evidence.target_type, None, None),
+            check_screen(expected, screen, self.healer.verdict),
+        ]
+        self._judge(pending, decide(pending.checks))
+
+    def _judge(self, pending: PendingHeal, verdict: Verdict) -> None:
+        """Save the verdict and its card; raise HealHalted on HALT."""
+        assert self.healer is not None
+        heal_id = pending.heal.heal_id
+        safe_key = re.sub(r"[^\w.-]+", "_", pending.evidence.key)
+        out = self.evidence_dir / self.healer.run_id / f"{heal_id}-{safe_key}"
+        pending.verdict = verdict
+        pending.card = evidence.save(pending.evidence, verdict, out)
+        self.healer.store.set_verdict(heal_id, verdict, str(pending.card))
+        if pending not in self.verdicts:
+            self.verdicts.append(pending)
+        if verdict.decision == HALT:
+            raise HealHalted(
+                f"HALT (likely real bug): {evidence.describe(pending.evidence, verdict)}\n"
+                f"evidence: {pending.card}"
+            )
+
+    def _halt_missing(self, locator: Locator, action: str) -> None:
+        """No tier found the element: HALT, with a card showing where it used to be."""
+        assert self.healer is not None and self.healer.miss is not None
+        miss = self.healer.miss
+        fake = Heal(cast(WebElement, None), locator, miss.heal_id, -1, 0.0, miss.fingerprint)
+        pending = PendingHeal(
+            fake,
+            Evidence(
+                key=locator.key,
+                action=action,
+                window_width=int(self.driver.get_window_size()["width"]),
+                fingerprint=miss.fingerprint,
+                before=self.healer.store.fingerprint_screenshot(self.bundle_id, locator.key),
+                after=self.driver.get_screenshot_as_png(),
+                data={"heal_id": miss.heal_id, "test": self.healer.test},
+            ),
+            [Check("found", False, miss.reason)],
+        )
+        self._judge(pending, decide(pending.checks))
+
+    def finish(self, passed: bool, failure: str = "", halted: bool = False) -> list[PendingHeal]:
+        """Round 3, when the test ends: a heal followed by a failing test becomes HALT.
+
+        If the test stopped at a later HALT (`halted`), earlier heals can't be judged by the
+        outcome, so they wait for review instead. Returns this test's judged heals.
+        """
+        for pending in self.verdicts:
+            if pending.verdict is None or pending.verdict.decision == HALT:
+                continue
+            if halted:
+                replay = Check("replay", None, "the test stopped at a later HALT", hard=False)
+            else:
+                replay = check_replay(passed, failure)
+            pending.checks.append(replay)
+            with contextlib.suppress(HealHalted):
+                self._judge(pending, decide(pending.checks))
+        return self.verdicts
 
     def wait_for_screen(self, screen: str, timeout: float | None = None) -> None:
         """Wait until the screen's marker (``screen.<screen>``) is visible and the UI has settled.
@@ -251,3 +451,22 @@ class App:
             if current == previous:
                 return
             previous = current
+
+
+def _target(heal: "Heal", element: WebElement) -> Target:
+    """The healed element as it is now, from the page source if the healer saw it there."""
+    if heal.node is not None:
+        node = heal.node
+        return Target(str(node.tag), node.get("name", ""), node.get("label", ""), rect_of(node))
+    r = element.rect
+    return Target(
+        str(element.get_attribute("type") or ""),
+        str(element.get_attribute("name") or ""),
+        str(element.get_attribute("label") or ""),
+        (int(r["x"]), int(r["y"]), int(r["width"]), int(r["height"])),
+    )
+
+
+def _attr(element: WebElement, name: str) -> str | None:
+    value = element.get_attribute(name)
+    return None if value is None else str(value)

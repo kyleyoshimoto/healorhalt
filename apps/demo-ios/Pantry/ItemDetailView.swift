@@ -34,10 +34,14 @@ struct ItemDetailView: View {
                     HStack {
                         Text("Quantity")
                         Spacer()
-                        Text("\(item.quantity)").accessibilityIdentifier("detail.quantity")
+                        // M22 (R4, bug): the quantity is shown one too high, under a new id.
+                        Text("\(Mutation.isActive("M22") ? item.quantity + 1 : item.quantity)")
+                            .accessibilityIdentifier(
+                                Mutation.pick("M22", "detail.amount", else: "detail.quantity"))
                     }
                 }
-                Section {
+                // M15 (R1, bug): the Delete Item button is gone.
+                if !Mutation.isActive("M15") { Section {
                     if Mutation.isActive("M04") {
                         // M04 (B4): the Delete button is wrapped in a new container.
                         VStack { deleteButton }
@@ -46,7 +50,7 @@ struct ItemDetailView: View {
                     } else {
                         deleteButton
                     }
-                }
+                } }
             }
             .navigationTitle(item.name)
             .toolbar {

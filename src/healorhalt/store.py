@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from healorhalt.fingerprint import Fingerprint
+from healorhalt.verdict import Screen, Verdict
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS fingerprints (
@@ -34,7 +35,11 @@ CREATE TABLE IF NOT EXISTS heals (
     new_strategy TEXT,
     new_value TEXT,
     score REAL,
-    candidates TEXT NOT NULL
+    candidates TEXT NOT NULL,
+    verdict TEXT,
+    reason TEXT,
+    checks TEXT,
+    evidence TEXT
 );
 CREATE TABLE IF NOT EXISTS heal_cache (
     app TEXT NOT NULL,
@@ -57,7 +62,17 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     prompt TEXT NOT NULL,
     response TEXT
 );
+CREATE TABLE IF NOT EXISTS screens (
+    app TEXT NOT NULL,
+    test TEXT NOT NULL,
+    step TEXT NOT NULL,
+    data TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (app, test, step)
+);
 """
+VERDICT_COLUMNS = ("verdict", "reason", "checks", "evidence")
+"""Added to heals in Phase 4; older databases get them on open."""
 
 
 def now() -> str:
@@ -77,7 +92,8 @@ class HealRecord:
     outcome: str
     """healed, not_found, no_fingerprint, below_threshold (Tier 1), or for Tier 2 no_proposal
     (the model answered that the element is gone, or named no drawn box), low_confidence or
-    llm_error (timeout, unreachable server, malformed answer)."""
+    llm_error (timeout, unreachable server, malformed answer). With --heal=full the verdict
+    columns (HEAL, ESCALATE or HALT, why, the checks and the evidence card) are set afterwards."""
     old_strategy: str
     old_value: str
     new_strategy: str | None = None
@@ -92,6 +108,11 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(heals)")}
+        with self.db:
+            for column in VERDICT_COLUMNS:
+                if column not in columns:
+                    self.db.execute(f"ALTER TABLE heals ADD COLUMN {column} TEXT")
 
     def close(self) -> None:
         self.db.close()
@@ -108,6 +129,46 @@ class Store:
             "SELECT data FROM fingerprints WHERE app = ? AND key = ?", (app, key)
         ).fetchone()
         return Fingerprint.from_json(row["data"]) if row else None
+
+    def fingerprint_screenshot(self, app: str, key: str) -> bytes | None:
+        """The whole screen on the run that recorded the fingerprint."""
+        row = self.db.execute(
+            "SELECT screenshot FROM fingerprints WHERE app = ? AND key = ?", (app, key)
+        ).fetchone()
+        return bytes(row["screenshot"]) if row and row["screenshot"] else None
+
+    def save_screen(self, app: str, test: str, step: str, screen: Screen) -> None:
+        """The screen a green run reached after `step` of `test`."""
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO screens VALUES (?, ?, ?, ?, ?)",
+                (app, test, step, json.dumps(screen.to_dict()), now()),
+            )
+
+    def screen(self, app: str, test: str, step: str) -> Screen | None:
+        row = self.db.execute(
+            "SELECT data FROM screens WHERE app = ? AND test = ? AND step = ?", (app, test, step)
+        ).fetchone()
+        return Screen.from_dict(json.loads(row["data"])) if row else None
+
+    def set_verdict(self, heal_id: int, verdict: Verdict, evidence: str | None = None) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE heals SET verdict = ?, reason = ?, checks = ?, evidence = ? WHERE id = ?",
+                (
+                    verdict.decision,
+                    verdict.reason,
+                    json.dumps(verdict.checks_json()),
+                    evidence,
+                    heal_id,
+                ),
+            )
+
+    def heal(self, heal_id: int) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = self.db.execute(
+            "SELECT * FROM heals WHERE id = ?", (heal_id,)
+        ).fetchone()
+        return row
 
     def fingerprint_count(self, app: str) -> int:
         row = self.db.execute("SELECT COUNT(*) FROM fingerprints WHERE app = ?", (app,)).fetchone()
@@ -199,11 +260,11 @@ class Store:
 
     def approve(self, heal_id: int) -> sqlite3.Row:
         """Copy a successful heal's locator into the Tier 0 cache."""
-        row: sqlite3.Row | None = self.db.execute(
-            "SELECT * FROM heals WHERE id = ?", (heal_id,)
-        ).fetchone()
+        row = self.heal(heal_id)
         if row is None or row["outcome"] != "healed":
             raise LookupError(f"heal {heal_id} doesn't exist or didn't heal")
+        if row["verdict"] == "HALT":
+            raise LookupError(f"heal {heal_id} was halted as a likely bug; it can't be approved")
         with self.db:
             self.db.execute(
                 "INSERT OR REPLACE INTO heal_cache VALUES (?, ?, ?, ?, ?, ?)",

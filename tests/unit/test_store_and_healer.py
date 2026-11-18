@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from healorhalt.fingerprint import Fingerprint, crop, fingerprint, parse
+from healorhalt.fingerprint import Fingerprint, crop, fingerprint, node_for, parse
 from healorhalt.heal import Healer
 from healorhalt.locator import Locator
 from healorhalt.store import HealRecord, Store
@@ -74,7 +74,8 @@ def test_tier1_heals_and_logs_the_score(store: Store) -> None:
         return "element"
 
     result = healer(store).heal(SUBMIT, xml("M01_login"), try_find)  # type: ignore[arg-type]
-    assert result == "element"
+    assert result is not None and result.element == "element"
+    assert (result.tier, result.checks) == (1, [])  # checks are made only in full mode
     assert tried == [SUBMIT.replaced("id", "login.signIn")]
     (row,) = store.heals(run_id="run1")
     assert (row["outcome"], row["tier"], row["mutation"]) == ("healed", 1, "M01")
@@ -106,7 +107,8 @@ def test_approved_heal_is_used_before_scoring(store: Store) -> None:
         tried.append(locator)
         return "element"
 
-    assert healer(store, mode="cache").heal(SUBMIT, xml("M01_login"), try_find) == "element"  # type: ignore[arg-type]
+    result = healer(store, mode="cache").heal(SUBMIT, xml("M01_login"), try_find)  # type: ignore[arg-type]
+    assert result is not None and result.element == "element"
     assert tried == [SUBMIT.replaced("id", "cached.id")]
     assert store.heals(run_id="run1")[0]["tier"] == 0
 
@@ -117,3 +119,32 @@ def test_crop_scales_points_to_pixels(tmp_path: Path) -> None:
     image.save(path)
     piece = crop(path.read_bytes(), (10, 20, 30, 40), window_width=100)
     assert Image.open(io.BytesIO(piece)).size == (90, 120)
+
+
+def test_nav_bar_wrapper_resolves_to_the_button_inside() -> None:
+    """iOS 26 wraps nav-bar buttons in an Other with the same id and frame (base_list.xml)."""
+    root = parse(xml("base_list"))
+    node = node_for(root, "XCUIElementTypeOther", (20, 66, 40, 36))
+    assert node is not None
+    assert (node.tag, node.get("name")) == ("XCUIElementTypeButton", "list.settings")
+
+
+def test_duplicate_labels_get_a_relative_indexed_xpath() -> None:
+    from healorhalt.heal import locator_for
+
+    root = parse(
+        """<AppiumAUT><XCUIElementTypeApplication name="App" label="App">
+        <XCUIElementTypeOther>
+          <XCUIElementTypeSwitch label="Show quantities"/>
+        </XCUIElementTypeOther>
+        <XCUIElementTypeSwitch label="Show quantities"/>
+        <XCUIElementTypeSwitch/>
+        </XCUIElementTypeApplication></AppiumAUT>"""
+    )
+    first, second, unlabelled = root.iter("XCUIElementTypeSwitch")
+    assert locator_for(second, root) == (
+        "xpath",
+        '(//XCUIElementTypeSwitch[@label="Show quantities"])[2]',
+    )
+    assert locator_for(first, root)[1].endswith("[1]")
+    assert locator_for(unlabelled, root) == ("xpath", "(//XCUIElementTypeSwitch)[3]")

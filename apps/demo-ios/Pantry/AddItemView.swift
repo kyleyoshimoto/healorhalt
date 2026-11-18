@@ -27,12 +27,21 @@ struct AddItemView: View {
                         .accessibilityIdentifier("add.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(Mutation.pick("M02", "Add", else: "Save")) {
-                        store.add(name: trimmedName, quantity: Int(quantity) ?? 1)
-                        dismiss()
+                    if Mutation.isActive("M19") {
+                        // M19 (R2, bug): Save is replaced by a look-alike that closes the form
+                        // without adding the item.
+                        Button("Save Draft") { dismiss() }
+                            .disabled(trimmedName.isEmpty)
+                            .accessibilityIdentifier("add.saveDraft")
+                    } else {
+                        // M23 (R6, bug): reworded "Save" -> "Add" (as in M02) and never enabled.
+                        Button(Mutation.pick("M02", "Add", else: Mutation.pick("M23", "Add", else: "Save"))) {
+                            store.add(name: trimmedName, quantity: Int(quantity) ?? 1)
+                            dismiss()
+                        }
+                        .disabled(trimmedName.isEmpty || Mutation.isActive("M23"))
+                        .accessibilityIdentifier("add.save")
                     }
-                    .disabled(trimmedName.isEmpty)
-                    .accessibilityIdentifier("add.save")
                 }
             }
         }

@@ -10,8 +10,9 @@ Oct 30, 2026 · Kyle Yoshimoto
 | 1. Demo app and baseline tests | Done (Nov 3, 2026) |
 | 2. Fingerprints and the cheap healing tiers | Done (Nov 10, 2026) |
 | 3. Local LLM tier | Done (Nov 11, 2026) |
-| 4. Verdict engine | Next |
-| 5–9 | Not started |
+| 4. Verdict engine | Done (Nov 18, 2026) |
+| 5. MVP benchmark and reports | Next |
+| 6–9 | Not started |
 
 ### Environment as of Phase 0
 
@@ -318,31 +319,91 @@ Notes from building it:
   counts; a timeout (30 s by default), an unreachable server or a malformed answer is logged as
   `llm_error` and the test fails normally.
 
-### Phase 4: Verdict engine (week 5, ~10 hrs)
+### Phase 4: Verdict engine (week 5, ~10 hrs) — done
 
-- [ ] Write `verdict.py`. A proposal (from any tier) becomes HEAL only if all of these pass:
+- [x] Write `verdict.py`. A proposal (from any tier) becomes HEAL only if all of these pass:
   1. Exactly one element matches the new locator
   2. The element type matches the fingerprint
   3. The combined score clears the HEAL threshold
   4. Replay check: the action runs and the step's assertion still passes
   5. Next-screen check: the screen reached after the action matches the recorded fingerprint of
      the next screen
-- [ ] HALT when no candidate clears the floor, the LLM says the element no longer exists, or the
+- [x] HALT when no candidate clears the floor, the LLM says the element no longer exists, or the
       replay or next-screen check fails. The test fails with a "likely real bug" message and
       evidence attached
-- [ ] ESCALATE for anything in between. The test is marked healed-pending-review and the suggested
+- [x] ESCALATE for anything in between. The test is marked healed-pending-review and the suggested
       locator change is written to a patch file
-- [ ] Make thresholds configurable, and keep the LLM's confidence as only one input. It never
+- [x] Make thresholds configurable, and keep the LLM's confidence as only one input. It never
       decides alone
-- [ ] Add 10 bug mutations to the demo app: button removed, a look-alike button that does something
+- [x] Add 10 bug mutations to the demo app: button removed, a look-alike button that does something
       else, wrong screen after tap, wrong total shown, field silently ignored
-- [ ] Write `evidence.py`: capture before, after and result screenshots; draw the target box, the
+- [x] Write `evidence.py`: capture before, after and result screenshots; draw the target box, the
       action marker (tap, type, swipe) and the old position; write the description from the
       fingerprint diff; save PNGs and JSON per verdict
-- [ ] Unit-test the point-to-pixel scaling and drawing against saved screenshots, with no simulator
-- [ ] Show the evidence card in the terminal summary as a path, and attach it to the test result
+- [x] Unit-test the point-to-pixel scaling and drawing against saved screenshots, with no simulator
+- [x] Show the evidence card in the terminal summary as a path, and attach it to the test result
 
-**Exit:** none of the 10 bug mutations ends in HEAL.
+**Exit:** none of the 10 bug mutations ends in HEAL. Met by `make phase4`: under `--heal=full`, 9
+bugs ended in HALT and 1 (M24, ambiguous) in ESCALATE; none in HEAL. All 14 benign mutations still
+ended in HEAL, with no false HALTs.
+
+| Case | Kind | Bug | Naive LLM | Full | Caught by |
+|---|---|---|---|---|---|
+| M15 | R1 | Delete Item button removed | red | HALT | LLM: element gone |
+| M16 | R1 | Log Out button removed | red | HALT | LLM: element gone |
+| M17 | R2 | Look-alike "Sign in with Passkey" that doesn't sign in | red | HALT | Next screen: login, not list |
+| M18 | R3 | Settings button renamed and opens the Add form | red | HALT | Next screen: add, not settings |
+| M19 | R2 | Look-alike "Save Draft" that doesn't save | red | HALT | Replay: test failed after the heal |
+| M20 | R5 | Search field moved and ignores input | red | HALT | Replay: test failed after the heal |
+| M21 | R5 | Fields wrapped, password ignores input | red | HALT | Replay: test failed after the heal |
+| M22 | R4 | Quantity renamed and shown one too high | red | HALT | Replay: test failed after the heal |
+| M23 | R6 | Save reworded and never enabled | red | HALT | Element disabled, before the tap |
+| M24 | R7 | Toggle loses its id; an identical toggle appears below it | **green** | ESCALATE | Ambiguity: 0.93 vs 0.92 |
+
+How it works:
+
+- `--heal=full` runs the same tiers as `--heal=llm` and judges every proposal in three rounds.
+  Before the action: unique match, type, enabled, combined score, ambiguity (a Tier 1 runner-up
+  within 0.05), and for Tier 2 the LLM's `element_still_exists`. After it: the effect (typed text
+  shows up, a switch flips) and the next screen. When the test ends: the test passed.
+- A failed hard check is HALT; a failed soft check, or one that couldn't run (no recorded screen),
+  is ESCALATE. A type change between Button, Cell and Link is soft (catalog B5); any other is hard.
+  Scores between the floor (0.4) and the threshold (0.6) are soft.
+- A Tier 2 combined score is half the chosen element's Tier 1 score and half the LLM's confidence,
+  so a fully confident LLM with no heuristic support scores 0.5: ESCALATE at best, never HEAL.
+  Every threshold is a pytest ini option (`healorhalt_verdict_*`).
+- `make record` now saves, per test and step, the screen each step led to: the visible screen
+  marker plus every developer-set identifier, ignoring the keyboard. Screens match when the
+  markers agree and the identifiers overlap by at least half. Fingerprints keep the whole
+  screenshot, for the card's before panel.
+- An ESCALATE test passes but shows as `PENDING REVIEW` (letter `R`), with `locators.patch` beside
+  its card. A HALT fails the test with the verdict as the message instead of a traceback. HALTed
+  heals can't be approved into the Tier 0 cache.
+- Evidence cards are written to `artifacts/evidence/<run>/<heal>-<key>/` as `card.png`, the three
+  raw screenshots and `evidence.json`. There is no swipe marker yet, since the demo tests don't
+  swipe.
+
+Notes from building it:
+
+- The first run halted 4 benign cases (M05, M10, M13, M14) on the type check. iOS 26 wraps each
+  nav-bar button in an `Other` with the same identifier and frame, and an id lookup returns the
+  wrapper, so the recorder had fingerprinted the wrapper. It now records the accessible control
+  inside. That also raised Tier 1's scores for those buttons (M05 0.74 to 0.92, M10 0.69 to 0.87).
+- Four of the bugs were caught only by the replay round, after the test's own assertion failed. In
+  M20 and M21 the field shows the typed text even though the app ignores it, so the effect check
+  can't see the bug. In M19 Tier 1 also healed a read of the new "Pasta" row onto "Apples" (0.72),
+  which the same round halted. A test with weaker assertions would let these through, so the
+  effect and next-screen checks are worth strengthening in Phase 5.
+- Naive LLM mode turned only M24 green; the demo tests' assertions caught the rest. The benchmark
+  needs cases where a heal past a bug leaves the test passing, or the false-heal rate of naive mode
+  will look better than it is.
+- The fallback locator for duplicate elements was an absolute XPath from the page source, which
+  Appium couldn't resolve. It is now relative and indexed:
+  `(//XCUIElementTypeSwitch[@label="Show quantities"])[2]`.
+- Recording takes about 7.5 minutes instead of 3.7, because it waits for the screen to settle
+  after every step. Healing runs only wait after healed steps.
+- The Phase 3 negative cases N01 and N03, where the LLM picks a look-alike, pass round 1 and are
+  caught by the next-screen check; `test_verdict.py` shows both.
 
 ### Phase 5: MVP benchmark and reports (week 6, ~10 hrs) — MVP gate
 

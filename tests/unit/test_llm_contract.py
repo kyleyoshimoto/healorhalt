@@ -32,7 +32,8 @@ from healorhalt.store import Store
 FIXTURES = Path(__file__).parent / "fixtures"
 RECORDED = sorted((FIXTURES / "llm").glob("*.json"))
 # Recorded answers where the model picked a look-alike for an element that isn't on screen.
-# Tier 2 alone can't be trusted with these; the Phase 4 verdict engine has to catch them.
+# Tier 2 alone can't be trusted with these; the verdict engine's next-screen check catches them
+# (test_verdict.py::test_look_alike_picks_are_caught_by_the_next_screen).
 KNOWN_WRONG = {"N01", "N03"}
 
 
@@ -74,7 +75,7 @@ def answer(**fields: Any) -> str:
 def test_recorded_answer_names_the_expected_element(path: Path) -> None:
     case = json.loads(path.read_text(encoding="utf-8"))
     if case["case"] in KNOWN_WRONG:
-        pytest.xfail("model picks a look-alike for a missing element; Phase 4 must catch it")
+        pytest.xfail("model picks a look-alike for a missing element; the verdict engine halts it")
     fp = fingerprint_of(case["fingerprint_from"], case["before"], case["locator"])
     root = xml(case["page_source"])
     screen, call = propose(fp, root, None, FakeClient(case["response"]), case["locator"])
@@ -216,10 +217,10 @@ def test_llm_mode_heals_what_tier1_misses(store: Store) -> None:
         found.append(locator)
         return "element"
 
-    element = _healer(store, "llm", client).heal(
+    heal = _healer(store, "llm", client).heal(
         EDIT, _source("M13_detail"), try_find, lambda: _png(1206, 2622), "tap"
     )
-    assert element == "element"
+    assert heal is not None and heal.element == "element"
     tier1, tier2 = store.heals(run_id="r")
     assert (tier1["tier"], tier1["outcome"]) == (1, "below_threshold")
     assert (tier2["tier"], tier2["outcome"], tier2["score"]) == (2, "healed", 0.97)

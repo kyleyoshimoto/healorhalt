@@ -2,7 +2,7 @@
 
 Self-healing iOS UI tests that repair broken locators automatically, and refuse to heal past real bugs.
 
-**Status:** early development. Phase 3 (the local LLM healing tier) is done; see [docs/plan.md](docs/plan.md).
+**Status:** early development. Phase 4 (the verdict engine: HEAL, ESCALATE or HALT, with evidence cards) is done; see [docs/plan.md](docs/plan.md).
 
 ## Why
 

@@ -15,6 +15,7 @@ from healorhalt.locator import Locator
 
 if TYPE_CHECKING:
     from healorhalt.store import Store
+    from healorhalt.verdict import Screen
 
 Node = etree._Element
 Rect = tuple[int, int, int, int]
@@ -165,8 +166,25 @@ def node_for(root: Node, element_type: str, rect: Rect) -> Node | None:
     """The tree node for an element found by the driver, matched on type and frame."""
     for node in root.iter(element_type):
         if rect_of(node) == rect:
-            return node
+            return innermost(node)
     return None
+
+
+def innermost(node: Node) -> Node:
+    """The control itself when `node` only wraps it.
+
+    iOS 26 wraps each nav-bar button in an Other with the same identifier and frame, and an
+    accessibility-id lookup returns the wrapper first. Fingerprinting the wrapper would record
+    the wrong type, so prefer an accessible descendant with the same name and frame.
+    """
+    for child in node.iterdescendants():
+        if (
+            child.get("name") == node.get("name")
+            and rect_of(child) == rect_of(node)
+            and child.get("accessible") == "true"
+        ):
+            return child
+    return node
 
 
 def crop(png: bytes, rect: Rect, window_width: int) -> bytes:
@@ -186,11 +204,16 @@ def crop(png: bytes, rect: Rect, window_width: int) -> bytes:
 
 
 class Recorder:
-    """Collects fingerprints during a test; the plugin saves them only if the test passes."""
+    """Collects fingerprints and screens during a test; the plugin saves them only if it passes.
+
+    Each fingerprint keeps the whole screenshot, so evidence cards can show the element where it
+    was. Each step also records the screen it led to, for the verdict engine's next-screen check.
+    """
 
     def __init__(self, driver: webdriver.Remote) -> None:
         self.driver = driver
         self.pending: dict[str, tuple[Fingerprint, bytes]] = {}
+        self.screens: dict[str, Screen] = {}
 
     def record(self, locator: Locator, element: WebElement) -> None:
         if locator.key in self.pending:
@@ -201,13 +224,20 @@ class Recorder:
         node = node_for(root, str(element.get_attribute("type")), rect)
         if node is None:
             return
-        window = next(root.iter("XCUIElementTypeApplication"))
-        shot = crop(self.driver.get_screenshot_as_png(), rect, int(window.get("width", "1")))
-        self.pending[locator.key] = (fingerprint(locator.key, node, root), shot)
+        self.pending[locator.key] = (
+            fingerprint(locator.key, node, root),
+            self.driver.get_screenshot_as_png(),
+        )
+
+    def record_screen(self, step: str, screen: "Screen") -> None:
+        self.screens[step] = screen
 
     def flush(self, store: "Store", app_id: str, test: str) -> int:
         for fp, shot in self.pending.values():
             store.save_fingerprint(app_id, fp, shot, test)
+        for step, screen in self.screens.items():
+            store.save_screen(app_id, test, step, screen)
         count = len(self.pending)
         self.pending.clear()
+        self.screens.clear()
         return count
