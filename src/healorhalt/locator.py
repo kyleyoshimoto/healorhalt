@@ -103,6 +103,14 @@ class LocatorMap:
         params_t = tuple(sorted(params.items()))
         return Locator(name, strategy, value, params_t, self._intents.get(name, ""))
 
+    def screens(self) -> dict[str, str]:
+        """Screen names mapped to their marker ids, from ``screen.<name>`` entries that are ids."""
+        return {
+            name.removeprefix("screen."): value
+            for name, (strategy, value) in self._entries.items()
+            if name.startswith("screen.") and strategy == "id"
+        }
+
     def __contains__(self, name: object) -> bool:
         return name in self._entries
 

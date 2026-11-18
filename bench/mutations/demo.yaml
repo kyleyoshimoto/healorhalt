@@ -135,3 +135,97 @@ cases:
       - tests/demo/test_settings.py::test_log_out
       - tests/demo/test_settings.py::test_sort_alphabetically
     expected: HEAL
+
+  # M15-M24 are real bugs, each hidden behind a broken locator so that healing gets a chance to
+  # paper over it (Phase 4). A heal past any of them must not end in HEAL.
+
+  - id: M15
+    app: pantry
+    kind: R1
+    description: Detail screen's Delete Item button removed
+    tests_affected:
+      - tests/demo/test_items.py::test_delete_item
+    expected: HALT
+
+  - id: M16
+    app: pantry
+    kind: R1
+    description: Settings' Log Out button removed
+    tests_affected:
+      - tests/demo/test_settings.py::test_log_out
+    expected: HALT
+
+  - id: M17
+    app: pantry
+    kind: R2
+    description: >-
+      Sign in button replaced by a look-alike "Sign in with Passkey" (login.passkey) that shows an
+      error instead of signing in
+    tests_affected:
+      - tests/demo/test_login.py::test_valid_login_shows_items
+    expected: HALT
+
+  - id: M18
+    app: pantry
+    kind: R3
+    description: >-
+      Settings (gear) button renamed list.settings -> list.preferences, as in M10, but it opens
+      the Add Item form instead of Settings
+    tests_affected:
+      - tests/demo/test_settings.py::test_sort_alphabetically
+    expected: HALT
+
+  - id: M19
+    app: pantry
+    kind: R2
+    description: >-
+      Add sheet's Save button replaced by a look-alike "Save Draft" (add.saveDraft) that closes
+      the form without adding the item
+    tests_affected:
+      - tests/demo/test_items.py::test_add_item
+    expected: HALT
+
+  - id: M20
+    app: pantry
+    kind: R5
+    description: Search field moved below the item count, as in M07, and silently ignores input
+    tests_affected:
+      - tests/demo/test_search.py::test_search_filters_items
+    expected: HALT
+
+  - id: M21
+    app: pantry
+    kind: R5
+    description: >-
+      Username and password fields wrapped in a new container, as in M08, and the password field
+      silently ignores input
+    tests_affected:
+      - tests/demo/test_login.py::test_valid_login_shows_items
+    expected: HALT
+
+  - id: M22
+    app: pantry
+    kind: R4
+    description: >-
+      Detail screen's quantity renamed detail.quantity -> detail.amount and shown one too high
+    tests_affected:
+      - tests/demo/test_items.py::test_item_detail_shows_name_and_quantity
+    expected: HALT
+
+  - id: M23
+    app: pantry
+    kind: R6
+    description: Add sheet's Save button reworded "Save" -> "Add", as in M02, and never enabled
+    tests_affected:
+      - tests/demo/test_items.py::test_add_item
+    expected: HALT
+
+  - id: M24
+    app: pantry
+    kind: R7
+    description: >-
+      Show quantities toggle loses its identifier, and an identical "Show quantities" toggle that
+      controls something else appears right below it
+    tests_affected:
+      - tests/demo/test_settings.py::test_hide_quantities
+    expected: ESCALATE or HALT

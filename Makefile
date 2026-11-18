@@ -1,7 +1,7 @@
 SIM ?= iPhone 17
 SIM_OS ?= 26.4
 export SIM SIM_OS
-.PHONY: setup lint fmt typecheck unit test sim bench phase0 app demo phase1 record phase2 phase3
+.PHONY: setup lint fmt typecheck unit test sim bench phase0 app demo phase1 record phase2 phase3 phase4
 
 setup:
 	uv sync
@@ -46,3 +46,6 @@ phase2:
 # Phase 3 exit check: the LLM tier recovers what the heuristics miss, under 10 s a heal.
 phase3:
 	uv run python scripts/phase3.py
+# Phase 4 exit check: none of the bug mutations ends in HEAL under --heal=full.
+phase4:
+	uv run python scripts/phase4.py

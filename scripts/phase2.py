@@ -34,7 +34,8 @@ def last_heal_id(store: Store) -> int:
 
 
 def main() -> int:
-    cases = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["cases"]
+    catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["cases"]
+    cases = [c for c in catalog if c["expected"] == "HEAL"]  # the bug cases are for Phase 4
     store = Store(DB)
     if store.fingerprint_count("com.healorhalt.pantry") == 0:
         sys.exit("no fingerprints recorded; run `make record` first")
